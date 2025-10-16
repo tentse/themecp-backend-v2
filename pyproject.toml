@@ -1,0 +1,24 @@
+[project]
+name = "themecp-backend-v2"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "tentse",email = "tenzintsering630@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic (>=1.17.0,<2.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+pytest-asyncio = "^1.2.0"
+pytest-cov = "^7.0.0"
+coverage = "^7.11.0"
+

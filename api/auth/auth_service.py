@@ -4,8 +4,6 @@ import jwt
 from fastapi import HTTPException
 from starlette import status
 
-from api.db.pg_database import SessionLocal
-
 from datetime import timezone, timedelta, datetime
 
 from api.config import get
@@ -38,25 +36,17 @@ def sign_in_user_service(username: str, password: str) -> SignInResponse:
     hashed_password = Utils.get_hashed_value(password)
 
     try:
-        with SessionLocal() as db_session:
-            logger.info(f"Checking if user exists: {username}")
-            user = db_session.query(User).filter(User.username == username).first()
-            if user is None or user.password != hashed_password:
-                logger.error(f"Invalid credentials: {username}")
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ErrorConstants.INVALID_CREDENTIALS)
-            else:
-                logger.info(f"User exists: {username}")
-                logger.info(f"Generating access token for user: {username}")
-                
-                access_token = _generate_token_user(user)
-                
-                logger.info(f"Access token generated successfully")
-                response = SignInResponse(
-                    user_id=str(user.id),
-                    username=user.username,
-                    access_token=access_token
-                )
-                return response
+        user = UserUtils.get_user_by_username(username=username)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ErrorConstants.USER_NOT_FOUND)
+        if user.password != hashed_password:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=ErrorConstants.INVALID_CREDENTIALS)
+        access_token = _generate_token_user(user)
+        return SignInResponse(
+            user_id=str(user.id),
+            username=user.username,
+            access_token=access_token
+        )
     except HTTPException as e:
         # Preserve intended HTTP errors (e.g., 401 for invalid credentials)
         raise e
@@ -66,42 +56,31 @@ def sign_in_user_service(username: str, password: str) -> SignInResponse:
 
 def sign_up_user_service(user_info: SignUpRequest) -> SignUpResponse:
     
-    logging.info(f"Validating user name and password: {user_info.username, user_info.password}")
-    _validate_user_name_and_password(user_info.username, user_info.password)
+    logging.info(f"Validating user name and password: {user_info.username}")
+    _validate_user_name_and_password(username=user_info.username, password=user_info.password)
     logging.info(f"User name and password validated successfully")
 
     logger.info(f"Signing up user: {user_info.username}")
 
     logger.info(f"Checking if user name exists: {user_info.username}")
-    UserUtils.check_if_user_name_already_exists(user_info.username)
+    UserUtils.check_if_user_name_already_exists(username=user_info.username)
 
     logger.info(f"Creating new user: {user_info.username}")
-    new_user = User(
+
+    saved_user = save_user_to_database(
         username=user_info.username,
-        password=Utils.get_hashed_value(user_info.password)
+        password=Utils.get_hashed_value(user_info.password),
+        codeforces_handle=user_info.codeforces_handle
     )
+    logger.info(f"Saved user to database: {saved_user.username}")
+    access_token = _generate_token_user(user=saved_user)
+    logger.info(f"Generated access token for user: {saved_user.username}")
 
-    try:
-        with SessionLocal() as db_session:
-            logger.info("Saving new user to database")
-            saved_user = save_user_to_database(db_session, new_user)
-            logger.info(f"Saved user to database: {saved_user.username}")
-            access_token = _generate_token_user(user=saved_user)
-            logger.info(f"Generated access token for user: {saved_user.username}")
-            response = SignUpResponse(
-                user_id=str(saved_user.id),
-                username=saved_user.username,
-                access_token=access_token
-            )
-            return response
-    except HTTPException as e:
-        # Bubble up specific HTTP errors coming from lower layers
-        raise e
-    except Exception as e:
-        logger.error("Failed to save user to database with error: %s", e, exc_info=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ErrorConstants.DATABASE_ERROR)
-
-
+    return SignUpResponse(
+        user_id=str(saved_user.id),
+        username=saved_user.username,
+        access_token=access_token
+    )
 
 def _generate_token_user(user: User):
     data = _generate_token_data(user)

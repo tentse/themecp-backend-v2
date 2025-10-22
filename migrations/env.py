@@ -4,6 +4,8 @@ from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from api.db.pg_database import Base
 
+from api.user.user_model import User
+
 from api.config import get
 
 from alembic import context

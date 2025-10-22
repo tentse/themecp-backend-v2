@@ -2,10 +2,10 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y
+## No extra OS packages needed
 
 
-COPY pyproject.toml poetry.lock ./app/
+COPY pyproject.toml poetry.lock ./
 
 RUN pip install poetry && \
     poetry config virtualenvs.create false && \
@@ -15,4 +15,4 @@ COPY . /app
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "poetry run alembic upgrade head && poetry run uvicorn pecha_api.app:api --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "poetry run alembic upgrade head && poetry run uvicorn api.app:api --host 0.0.0.0 --port 8000"]

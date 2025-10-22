@@ -8,7 +8,12 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "alembic (>=1.17.0,<2.0.0)"
+    "alembic (>=1.17.0,<2.0.0)",
+    "fastapi (>=0.115.0,<1.0.0)",
+    "uvicorn[standard] (>=0.30.0,<1.0.0)",
+    "pyjwt (>=2.9.0,<3.0.0)",
+    "jwt (>=1.4.0,<2.0.0)",
+    "psycopg2 (>=2.9.11,<3.0.0)"
 ]
 
 
@@ -16,9 +21,13 @@ dependencies = [
 requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
+[tool.poetry]
+package-mode = false
+
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"
 pytest-asyncio = "^1.2.0"
 pytest-cov = "^7.0.0"
 coverage = "^7.11.0"
+alembic = "^1.17.0"
 

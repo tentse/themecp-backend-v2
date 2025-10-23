@@ -20,10 +20,10 @@ class ContestSessionResponse(BaseModel):
     rating_2: int
     rating_3: int
     rating_4: int
-    t1 = Optional[str] = None
-    t2 = Optional[str] = None
-    t3 = Optional[str] = None
-    t4 = Optional[str] = None
+    t1: Optional[str] = None
+    t2: Optional[str] = None
+    t3: Optional[str] = None
+    t4: Optional[str] = None
     problem_1_id: str
     problem_2_id: str
     problem_3_id: str

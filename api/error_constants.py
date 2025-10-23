@@ -7,3 +7,4 @@ class ErrorConstants:
     USER_NOT_FOUND = "User not found"
     UNSOLVED_PROBLEM_NOT_FOUND = "Unsolved problem not found from codeforces"
     CONTEST_LEVEL_NOT_FOUND = "Contest level not found"
+    CODEFORCES_API_ERROR = "Failed to get problem from codeforces"

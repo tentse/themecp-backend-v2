@@ -39,7 +39,7 @@ def create_contest_session_service(
     try:
         contest_level_detail = get_contest_level_service(contest_level=contest_level)
 
-        user_solved_problems: List[Problem] = _get_user_solved_problems_service(
+        user_solved_problems: List[str] = _get_user_solved_problems_service(
             user_codeforces_handle = user_detail.codeforces_handle
         )
 
@@ -110,46 +110,47 @@ def _get_user_solved_problems_service(
 def _get_problems_service(
     contest_level_detail: ContestLevelResponse,
     contest_theme: str,
-    user_solved_problems: List[Problem]
+    user_solved_problems: List[str]
 ) -> List[Problem]:
 
     try:
-        problems: List[Problem] = []
+        selected_problems: List[Problem] = []
+        codeforces_problems = fetch_problems_from_codeforces_repository(
+            theme = contest_theme
+        )
         for i in range(1, 5):
             problem = _fetch_problem_from_codeforces_service(
                 rating = getattr(contest_level_detail, f"rating_{i}"),
-                theme = contest_theme,
-                user_solved_problems = user_solved_problems
+                user_solved_problems = user_solved_problems,
+                problems = codeforces_problems
             )
-            problems.append(
+            selected_problems.append(
                 Problem(
                     problem_number = i,
                     problem_id = problem.problem_id,
                     problem_index = problem.problem_index,
-                    problem_rating = problem.problem_rating,
+                    problem_rating = int(problem.problem_rating),
                 )
             )
-        return problems
+        return selected_problems
     except HTTPException as e:
         raise e
 
 def _fetch_problem_from_codeforces_service(
     rating: int,
-    theme: str,
-    user_solved_problems: List[Problem]
+    user_solved_problems: List[str],
+    problems: any
 ) -> Problem:
     try:
-        problems = fetch_problems_from_codeforces_repository(
-            theme = theme
-        )
         for problem in problems:
             if problem.get('rating', None) != None and problem.get('rating') == rating:
                 problem_id_and_index = f"{problem.get('contestId')}-{problem.get('index')}"
                 if problem_id_and_index not in user_solved_problems:
+                    user_solved_problems.append(f"{problem.get('contestId')}-{problem.get('index')}")
                     return Problem(
-                        problem_id = problem.get('contestId'),
+                        problem_id = str(problem.get('contestId')),
                         problem_index = problem.get('index'),
-                        problem_rating = problem.get('rating'),
+                        problem_rating = int(problem.get('rating')),
                     )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ErrorConstants.UNSOLVED_PROBLEM_NOT_FOUND)
 

@@ -36,6 +36,7 @@ def get_user_solved_problems_on_codeforces_repository(user_codeforces_handle: st
 
 def save_contest_session_repository(user_id: UUID,contest_level: int, contest_theme: str, contest_duration: int, problems: List[Problem]) -> ContestSession:
     try:
+        print("PROBLEMS: \n", problems)
         with SessionLocal() as db_session:
             new_contest_session = ContestSession(
                 user_id = user_id,

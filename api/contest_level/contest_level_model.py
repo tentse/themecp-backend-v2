@@ -9,8 +9,9 @@ class ContestLevel(Base):
 
     __tablename__ = "contest_level"
 
-    level = Column(Integer, nullable=False)
+    level = Column(Integer, primary_key=True, nullable=False)
     duration = Column(Integer, nullable=False)
+    performance = Column(Integer, nullable=False)
     rating_1 = Column(Integer, nullable=False)
     rating_2 = Column(Integer, nullable=False)
     rating_3 = Column(Integer, nullable=False)

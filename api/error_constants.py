@@ -8,3 +8,5 @@ class ErrorConstants:
     UNSOLVED_PROBLEM_NOT_FOUND = "Unsolved problem not found from codeforces"
     CONTEST_LEVEL_NOT_FOUND = "Contest level not found"
     CODEFORCES_API_ERROR = "Failed to get problem from codeforces"
+    CONTEST_SESSION_NOT_FOUND = "Contest session not found"
+    CONTEST_SESSION_DOES_NOT_BELONG_TO_USER = "Contest session does not belong to user"

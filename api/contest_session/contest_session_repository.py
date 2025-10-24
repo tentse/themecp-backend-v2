@@ -18,6 +18,37 @@ from api.contest_session.contest_session_response_model import (
 
 logger = logging.getLogger(__name__)
 
+def update_contest_session_problem_repository(contest_session_id: str, problem_number: int, problem_id: str, problem_index: str, problem_rating: int, problem_presented_list: List[str]):
+    try:
+        with SessionLocal() as db_session:
+            contest_session = db_session.query(ContestSession).filter(ContestSession.id == UUID(contest_session_id)).first()
+            if contest_session is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ErrorConstants.CONTEST_SESSION_NOT_FOUND)
+            contest_session.problem_listed = problem_presented_list
+            setattr(contest_session, f"problem_{problem_number}_id", problem_id)
+            setattr(contest_session, f"problem_{problem_number}_index", problem_index)
+            setattr(contest_session, f"rating_{problem_number}", problem_rating)
+            db_session.commit()
+            db_session.refresh(contest_session)
+            return contest_session
+    except Exception as e:
+        logger.error("Failed to update contest session problem with error: %s", e, exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ErrorConstants.DATABASE_ERROR)
+
+def get_contest_session_by_id_repository(contest_session_id: str) -> ContestSession:
+    try:
+        with SessionLocal() as db_session:
+            contest_session = db_session.query(ContestSession).filter(ContestSession.id == UUID(contest_session_id)).first()
+            if contest_session is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ErrorConstants.CONTEST_SESSION_NOT_FOUND)
+            return contest_session
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error("Failed to get contest session by id with error: %s", e, exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ErrorConstants.DATABASE_ERROR)
+
+
 def fetch_problems_from_codeforces_repository(theme: str):
     try:
         problems = requests.get(f"{get('CODEFORCE_API_URL')}/problemset.problems?tags={theme}")

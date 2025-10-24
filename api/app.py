@@ -7,6 +7,7 @@ from starlette import status
 
 from api.auth.auth_views import auth_router
 from api.user.user_views import user_router
+from api.contest_session.contest_session_views import contest_session_router
 
 # Configure application logging to ensure module logs appear in the console
 LOGGING_CONFIG = {
@@ -54,9 +55,11 @@ api.add_middleware(
     allow_headers=["*"],
 )
 
-
+# TO RUN SERVER : poetry run uvicorn api.app:api --reload
+# Alembic command:  poetry run alembic revision --autogenerate -m "migration_name", poetry run alembic upgrade head
 api.include_router(auth_router)
 api.include_router(user_router)
+api.include_router(contest_session_router)
 
 @api.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():

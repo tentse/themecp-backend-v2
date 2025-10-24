@@ -5,6 +5,8 @@ from sqlalchemy import pool
 from api.db.pg_database import Base
 
 from api.user.user_model import User
+from api.contest_session.contest_session_model import ContestSession
+from api.contest_level.contest_level_model import ContestLevel
 
 from api.config import get
 

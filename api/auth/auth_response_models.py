@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class SignUpRequest(BaseModel):
     username: str
     password: str
+    codeforces_handle: str
     
 
 class SignUpResponse(BaseModel):

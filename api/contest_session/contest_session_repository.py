@@ -99,3 +99,22 @@ def save_contest_session_repository(user_id: UUID,contest_level: int, contest_th
     except Exception as e:
         logger.error("Failed to save contest session with error: %s", e, exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ErrorConstants.DATABASE_ERROR)
+
+
+def update_start_contest_session_repository(contest_session_id: str, contest_start_time: int, contest_end_time: int) -> ContestSession:
+    try:
+        with SessionLocal() as db_session:
+            contest_session = db_session.query(ContestSession).filter(ContestSession.id == UUID(contest_session_id)).first()
+            if contest_session is None:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ErrorConstants.CONTEST_SESSION_NOT_FOUND)
+            
+            contest_session.status = "started"
+            contest_session.start_time = contest_start_time
+            contest_session.end_time = contest_end_time
+            db_session.commit()
+            db_session.refresh(contest_session)
+            
+            return contest_session
+    except Exception as e:
+        logger.error("Failed to update start contest session with error: %s", e, exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=ErrorConstants.DATABASE_ERROR)

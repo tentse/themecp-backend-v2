@@ -5,13 +5,15 @@ from starlette import status
 
 from api.contest_session.contest_session_response_model import (
     ContestSessionResponse,
-    Problem
+    Problem,
+    StartContestSessionResponse
 )
 
 from api.contest_session.contest_session_service import (
     create_contest_session_service,
     update_contest_session_problem_service,
-    get_contest_session_by_id_service
+    get_contest_session_by_id_service,
+    start_contest_session_service
 )
 
 contest_session_router = APIRouter(
@@ -51,5 +53,15 @@ def update_contest_session_problem(
         contest_session_id=contest_session_id,
         problem_number=problem_number,
         problem_rating=problem_rating,
+        token=authentication_credentials.credentials
+    )
+
+@contest_session_router.put("/{contest_session_id}/start", status_code=status.HTTP_201_CREATED)
+def start_contest_session(
+    contest_session_id: str,
+    authentication_credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer())
+) -> StartContestSessionResponse:
+    return start_contest_session_service(
+        contest_session_id=contest_session_id,
         token=authentication_credentials.credentials
     )

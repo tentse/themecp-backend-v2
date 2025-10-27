@@ -3,10 +3,12 @@ from starlette import status
 import logging
 from api.error_constants import ErrorConstants
 from typing import List
+import time
 
 from api.contest_session.contest_session_response_model import (
     ContestSessionResponse,
-    Problem
+    Problem,
+    StartContestSessionResponse
 )
 
 from api.contest_session.contest_session_repository import (
@@ -14,7 +16,8 @@ from api.contest_session.contest_session_repository import (
     save_contest_session_repository,
     get_user_solved_problems_on_codeforces_repository,
     get_contest_session_by_id_repository,
-    update_contest_session_problem_repository
+    update_contest_session_problem_repository,
+    update_start_contest_session_repository
 )
 
 from api.user.user_service import (
@@ -246,3 +249,42 @@ def _fetch_problem_from_codeforces_service(
     except HTTPException as e:
         raise e
 
+
+def start_contest_session_service(contest_session_id: str, token: str) -> StartContestSessionResponse:
+
+    user_detail = _validate_token_and_get_user_detail(token=token)
+
+    try:
+        contest_session = get_contest_session_by_id_repository(
+            contest_session_id = contest_session_id
+        )
+        if contest_session.user_id != user_detail.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ErrorConstants.CONTEST_SESSION_DOES_NOT_BELONG_TO_USER)
+
+        if contest_session.status != "review":
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ErrorConstants.CONTEST_SESSION_ALREADY_STARTED_OR_COMPLETED)
+
+        current_time_in_unix = int(time.time())
+
+        contest_start_time = current_time_in_unix + 15
+
+        contest_end_time = contest_start_time + contest_session.duration
+
+        updated_contest_session = update_start_contest_session_repository(
+            contest_session_id = contest_session_id,
+            contest_start_time = contest_start_time,
+            contest_end_time = contest_end_time
+        )
+
+        response = StartContestSessionResponse(
+            contest_session_id = str(updated_contest_session.id),
+            contest_start_time = contest_start_time,
+            contest_end_time = contest_end_time,
+            duration = contest_session.duration,
+            status = updated_contest_session.status
+        )
+
+        return response
+
+    except HTTPException as e:
+        raise e

@@ -10,3 +10,4 @@ class ErrorConstants:
     CODEFORCES_API_ERROR = "Failed to get problem from codeforces"
     CONTEST_SESSION_NOT_FOUND = "Contest session not found"
     CONTEST_SESSION_DOES_NOT_BELONG_TO_USER = "Contest session does not belong to user"
+    CONTEST_SESSION_ALREADY_STARTED_OR_COMPLETED = "Contest session already started or completed"

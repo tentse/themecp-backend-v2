@@ -34,4 +34,6 @@ class ContestSessionResponse(BaseModel):
     problem_4_index: str
     status: str
     
-
+class StartContestSessionResponse(BaseModel):
+    contest_start_time: int
+    contest_end_time: int

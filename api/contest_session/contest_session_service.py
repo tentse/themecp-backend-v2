@@ -17,7 +17,8 @@ from api.contest_session.contest_session_repository import (
     get_user_solved_problems_on_codeforces_repository,
     get_contest_session_by_id_repository,
     update_contest_session_problem_repository,
-    update_start_contest_session_repository
+    update_start_contest_session_repository,
+    delete_contest_session_repository
 )
 
 from api.user.user_service import (
@@ -286,5 +287,18 @@ def start_contest_session_service(contest_session_id: str, token: str) -> StartC
 
         return response
 
+    except HTTPException as e:
+        raise e
+
+
+def delete_contest_session_service(contest_session_id: str, token: str) -> None:
+
+    user_detail = _validate_token_and_get_user_detail(token=token)
+
+    try:
+        delete_contest_session_repository(
+            contest_session_id = contest_session_id,
+            user_id = user_detail.id
+        )
     except HTTPException as e:
         raise e

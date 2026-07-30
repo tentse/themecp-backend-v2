@@ -1,0 +1,60 @@
+# Version control and CI
+.git
+.gitignore
+.github
+
+# Local tooling / editor state
+.claude
+.vscode
+.idea
+.DS_Store
+**/.DS_Store
+
+# Secrets — keep the example, never the real file
+.env
+.env.*
+!.env.example
+
+# Python bytecode and caches
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Local Postgres runtime data
+local_setup/data
+
+# Production data exports (real user emails, database dumps)
+scripts/backups
+scripts/migration_skipped.csv
+scripts/migration_report.txt
+scripts/*.csv
+scripts/*.txt
+*.sql
+*.sql.*
+*.dump
+*.backup
+
+# Key and certificate material
+**/*.pem
+**/*.key
+**/*.p8
+**/*.p12
+**/*.pfx
+**/*.crt
+**/*.cer
+**/*.der
+**/*.jks
+**/*.keystore
+
+# Tests, docs, coverage output — not needed in the runtime image
+test
+doc
+htmlcov
+.coverage
+coverage.xml
+
+# Local review/planning output
+review.md
+session-refactor-plan.md

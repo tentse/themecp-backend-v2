@@ -1,0 +1,65 @@
+[project]
+name = "themecp-backend-v2"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "tentse",email = "92934593+tentse@users.noreply.github.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic (>=1.17.0,<2.0.0)",
+    "fastapi (>=0.115.0,<1.0.0)",
+    "uvicorn[standard] (>=0.30.0,<1.0.0)",
+    "pyjwt (>=2.9.0,<3.0.0)",
+    "python-jose[cryptography] (>=3.3.0,<4.0.0)",
+    "requests (>=2.32.5,<3.0.0)",
+    "psycopg2-binary (>=2.9.11,<3.0.0)",
+    "pylint (>=4.0.4,<5.0.0)",
+    "sqlalchemy (>=2.0.45,<3.0.0)",
+    "httpx (>=0.28.1,<0.29.0)",
+    "pydantic[email] (>=2.12.5,<3.0.0)",
+    "structlog (>=25.5.0,<26.0.0)",
+    "sentry-sdk[fastapi] (>=2.60.0,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+pytest-asyncio = "^1.2.0"
+pytest-cov = "^7.0.0"
+pytest-mock = "^3.14.0"
+coverage = "^7.11.0"
+alembic = "^1.17.0"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["test"]
+
+[tool.coverage.run]
+source = ["api"]
+omit = [
+    "*/tests/*",
+    "*/test/*",
+    "*/__pycache__/*",
+    "*/migrations/*",
+    "alembic/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]

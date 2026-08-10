@@ -13,8 +13,7 @@ from .contest_session_response_models import (
 from .contest_session_models import (
     ContestSession,
     ContestSessionSeenProblem,
-    ContestSessionProblemsStatus,
-    ContestSessionResult
+    ProblemSlot
 )
 from api.utils import Utils
 
@@ -197,23 +196,23 @@ class ContestSessionRepository:
             ) from e
 
     @staticmethod
-    def get_problem_statuses_by_id(db: Session, session_id: str) -> list[ContestSessionProblemsStatus]:
+    def get_problem_statuses_by_id(db: Session, session_id: str) -> list[ProblemSlot]:
         """
-        Fetch all problem status records for a session, ordered by problem_number.
+        Fetch the four problem slots for a session, ordered by problem_number.
 
         Args:
             session_id: The contest session ID
 
         Returns:
-            List of ContestSessionProblemsStatus ordered by problem_number
+            List of ProblemSlot ordered by problem_number
         """
         try:
-            problem_statuses = db.query(ContestSessionProblemsStatus).filter(
-                ContestSessionProblemsStatus.session_id == session_id
-            ).order_by(
-                ContestSessionProblemsStatus.problem_number
-            ).all()
-            return problem_statuses
+            session_row = db.query(ContestSession).filter(
+                ContestSession.id == session_id
+            ).first()
+            if session_row is None:
+                return []
+            return session_row.problem_slots()
         except SQLAlchemyError as e:
             logger.exception("db.error", operation="get_problem_statuses_by_id", session_id=session_id)
             raise HTTPException(
@@ -225,31 +224,33 @@ class ContestSessionRepository:
     @staticmethod
     def update_problem_status(
         db: Session,
-        problem_status_id: int,
+        session_id: str,
+        problem_number: int,
         state: str,
-        accepted_at: str,
+        accepted_at: int,
         solved_in_min: int
     ) -> None:
         """
-        Update a single problem status record.
+        Update a single problem slot on the session.
 
         Args:
-            problem_status_id: The primary key of the problem status record
+            session_id: The contest session ID
+            problem_number: Which slot to update, 1 through 4
             state: New state (e.g. "SOLVED")
-            accepted_at: Unix timestamp as string of when the submission was accepted
+            accepted_at: Unix timestamp of when the submission was accepted
             solved_in_min: Time in minutes from contest start to solve
         """
         try:
-            db.query(ContestSessionProblemsStatus).filter(
-                ContestSessionProblemsStatus.id == problem_status_id
+            db.query(ContestSession).filter(
+                ContestSession.id == session_id
             ).update({
-                "status": state,
-                "accepted_at": accepted_at,
-                "solved_in_min": solved_in_min
+                f"p{problem_number}_status": state,
+                f"p{problem_number}_accepted_at": accepted_at,
+                f"p{problem_number}_solved_in_min": solved_in_min
             })
             db.flush()
         except SQLAlchemyError as e:
-            logger.exception("db.error", operation="update_problem_status", problem_status_id=problem_status_id)
+            logger.exception("db.error", operation="update_problem_status", session_id=session_id, problem_number=problem_number)
             raise HTTPException(
                 status_code=503,
                 detail=ErrorConstants.DB_ERROR_UPDATING_PROBLEM_STATUS
@@ -257,25 +258,27 @@ class ContestSessionRepository:
 
 
     @staticmethod
-    def get_last_contest_result(db: Session, user_id: str) -> ContestSessionResult | None:
+    def get_last_contest_result(db: Session, user_id: str) -> ContestSession | None:
         """
-        Get the user's most recent contest result by joining with ContestSession.
+        Get the user's most recent finished contest session.
+
+        Ordering must match get_user_contest_history_paginated: this supplies
+        rating_before for the next contest, so a different order here would
+        silently break the rating chain.
 
         Args:
             user_id: The user ID
 
         Returns:
-            The most recent ContestSessionResult or None if no previous contests
+            The most recent finished ContestSession or None if no previous contests
         """
         try:
-            result = db.query(ContestSessionResult).join(
-                ContestSession,
-                ContestSessionResult.session_id == ContestSession.id
-            ).filter(
+            result = db.query(ContestSession).filter(
                 ContestSession.user_id == user_id,
                 ContestSession.status == ContestStatus.FINISHED.value
             ).order_by(
-                ContestSessionResult.id.desc()
+                ContestSession.starts_at.desc().nullslast(),
+                ContestSession.id.desc()
             ).first()
             return result
         except SQLAlchemyError as e:
@@ -290,38 +293,35 @@ class ContestSessionRepository:
     def save_contest_result(
         db: Session,
         session_id: str,
-        solved_count: int,
         performance: int,
         rating_before: int,
         rating_after: int,
         rating_delta: int
-    ) -> ContestSessionResult:
+    ) -> None:
         """
-        Save a contest result record.
+        Write the contest outcome onto the session and mark it FINISHED.
+
+        The outcome and the status change are a single UPDATE: they always
+        happened together, and the merged table lets them share one write.
 
         Args:
             session_id: The contest session ID
-            solved_count: Number of problems solved
             performance: Calculated performance rating
             rating_before: User's rating before this contest
             rating_after: User's rating after this contest
             rating_delta: Change in rating
-
-        Returns:
-            The saved ContestSessionResult
         """
         try:
-            result = ContestSessionResult(
-                session_id=session_id,
-                solved_count=solved_count,
-                performance=performance,
-                rating_before=rating_before,
-                rating_after=rating_after,
-                rating_delta=rating_delta
-            )
-            db.add(result)
+            db.query(ContestSession).filter(
+                ContestSession.id == session_id
+            ).update({
+                "performance": performance,
+                "rating_before": rating_before,
+                "rating_after": rating_after,
+                "rating_delta": rating_delta,
+                "status": ContestStatus.FINISHED.value
+            })
             db.flush()
-            return result
         except SQLAlchemyError as e:
             logger.exception("db.error", operation="save_contest_result", session_id=session_id)
             raise HTTPException(
@@ -331,37 +331,17 @@ class ContestSessionRepository:
 
 
     @staticmethod
-    def end_contest_session(db: Session, session_id: str) -> None:
-        """
-        Update session status to FINISHED.
-
-        Args:
-            session_id: The contest session ID
-        """
-        try:
-            db.query(ContestSession).filter(
-                ContestSession.id == session_id
-            ).update({
-                "status": ContestStatus.FINISHED.value
-            })
-            db.flush()
-        except SQLAlchemyError as e:
-            logger.exception("db.error", operation="end_contest_session", session_id=session_id)
-            raise HTTPException(
-                status_code=503,
-                detail=ErrorConstants.DB_ERROR_ENDING_CONTEST_SESSION
-            ) from e
-
-
-    @staticmethod
     def get_user_contest_history_paginated(
         db: Session,
         user_id: str,
         skip: int,
         limit: int
-    ) -> tuple[list[tuple[ContestSession, ContestSessionResult]], int]:
+    ) -> tuple[list[ContestSession], int]:
         """
-        Get user's finished contest sessions with results, paginated, latest first.
+        Get user's finished contest sessions, paginated, latest first.
+
+        Everything the history needs now lives on the session row, so this is
+        two queries total regardless of how many rows are returned.
 
         Args:
             user_id: The user ID
@@ -369,26 +349,21 @@ class ContestSessionRepository:
             limit: Number of items to return
 
         Returns:
-            Tuple of (list of (ContestSession, ContestSessionResult) tuples, total_count)
+            Tuple of (list of ContestSession, total_count)
         """
         try:
-            count_query = db.query(ContestSession.id).join(
-                ContestSessionResult,
-                ContestSession.id == ContestSessionResult.session_id
-            ).filter(
+            count_query = db.query(ContestSession.id).filter(
                 ContestSession.user_id == user_id,
                 ContestSession.status == ContestStatus.FINISHED.value
             )
             total_count = count_query.count()
 
-            rows_query = db.query(ContestSession, ContestSessionResult).join(
-                ContestSessionResult,
-                ContestSession.id == ContestSessionResult.session_id
-            ).filter(
+            rows_query = db.query(ContestSession).filter(
                 ContestSession.user_id == user_id,
                 ContestSession.status == ContestStatus.FINISHED.value
             ).order_by(
-                ContestSessionResult.id.desc()
+                ContestSession.starts_at.desc().nullslast(),
+                ContestSession.id.desc()
             ).offset(skip).limit(limit)
             rows = rows_query.all()
 
@@ -407,39 +382,35 @@ class ContestSessionRepository:
         session_id: str,
         starts_at: int,
         ends_at: int,
-        problems: list[tuple[str, str, int]]
+        ratings: list[int]
     ) -> None:
         """
-        Update session to RUNNING status and create problem status records.
+        Update session to RUNNING status and snapshot the problem ratings.
+
+        The ratings are stored on the session rather than looked up from
+        contest_levels later, so editing a level never rewrites past contests.
+        The problems themselves are already on the row from REVIEW, so slot N
+        and rating N describe the same problem by construction.
 
         Args:
             session_id: The contest session ID
             starts_at: Unix timestamp in seconds when contest starts
-            problems: List of (contestID, index, rating) tuples for each problem
+            ends_at: Unix timestamp in seconds when contest ends
+            ratings: The four problem ratings, in problem_number order
         """
         try:
-            # Update session status and start time
-            db.query(ContestSession).filter(
-                ContestSession.id == session_id
-            ).update({
+            values = {
                 "status": ContestStatus.RUNNING.value,
                 "starts_at": starts_at,
                 "ends_at": ends_at
-            })
+            }
+            for problem_number, rating in enumerate(ratings, start=1):
+                values[f"p{problem_number}_rating"] = rating
+                values[f"p{problem_number}_status"] = ProblemStatus.UNSOLVED.value
 
-            # Create problem status records for all 4 problems
-            for i, (contest_id, index, rating) in enumerate(problems, start=1):
-                problem_status = ContestSessionProblemsStatus(
-                    session_id=session_id,
-                    problem_number=i,
-                    problem_contestId=contest_id,
-                    problem_index=index,
-                    problem_rating=rating,
-                    status=ProblemStatus.UNSOLVED.value,
-                    accepted_at=None,
-                    solved_in_min=None
-                )
-                db.add(problem_status)
+            db.query(ContestSession).filter(
+                ContestSession.id == session_id
+            ).update(values)
 
             db.flush()
         except SQLAlchemyError as e:
@@ -476,11 +447,7 @@ class ContestSessionRepository:
         """
         try:
             rows = (
-                db.query(ContestSession, ContestSessionResult)
-                .join(
-                    ContestSessionResult,
-                    ContestSession.id == ContestSessionResult.session_id,
-                )
+                db.query(ContestSession)
                 .filter(
                     ContestSession.user_id == user_id,
                     ContestSession.status == ContestStatus.FINISHED.value,
@@ -489,11 +456,11 @@ class ContestSessionRepository:
                 .all()
             )
             result: list[tuple[str, int, int]] = []
-            for session, res in rows:
+            for session in rows:
                 if session.starts_at is None:
                     continue
                 date_str: str = Utils.unix_timestamp_to_date_str(session.starts_at)
-                result.append((date_str, res.rating_after, res.rating_delta))
+                result.append((date_str, session.rating_after, session.rating_delta))
             return result
         except SQLAlchemyError as e:
             logger.exception("db.error", operation="get_user_themecp_contest_ratings_with_date", user_id=user_id)

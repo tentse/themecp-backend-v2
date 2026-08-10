@@ -373,9 +373,9 @@ class TestStartContestSession:
         db
     ):
         """
-        Test that starting a contest creates problem status records for all 4 problems
+        Test that starting a contest initialises the problem slots for all 4 problems
         """
-        from api.contest_session.contest_session_models import ContestSessionProblemsStatus
+        from api.contest_session.contest_session_models import ContestSession
 
         token = create_dummy_in_review_contest_session_level_21_theme_greedy['token']
         session_id = create_dummy_in_review_contest_session_level_21_theme_greedy['contest_session']['id']
@@ -386,12 +386,14 @@ class TestStartContestSession:
             headers={"Authorization": f"Bearer {token}"}
         )
 
-        # Query the database directly to verify problem status records were created
-        problem_statuses = db.query(ContestSessionProblemsStatus).filter(
-            ContestSessionProblemsStatus.session_id == session_id
-        ).all()
+        # Query the database directly to verify the problem slots were initialised
+        db.expire_all()
+        session_row = db.query(ContestSession).filter(
+            ContestSession.id == session_id
+        ).one()
+        problem_statuses = session_row.problem_slots()
 
-        # Verify 4 problem status records were created
+        # Verify all 4 problem slots are present
         assert len(problem_statuses) == 4
 
         # Verify each record has correct initial state
@@ -841,7 +843,7 @@ class TestRefreshProblemStatus:
         Problem 1 is solved on first refresh; second refresh should keep the
         same accepted_at and solved_in_min values.
         """
-        from api.contest_session.contest_session_models import ContestSessionProblemsStatus
+        from api.contest_session.contest_session_models import ContestSession
 
         token = create_dummy_running_contest_session_level_21_theme_greedy['token']
         contest_session = create_dummy_running_contest_session_level_21_theme_greedy['contest_session']
@@ -877,12 +879,12 @@ class TestRefreshProblemStatus:
         assert first_data['p1_status'] == ProblemStatus.SOLVED.value
 
         # Fetch solved-at timing from DB after first refresh
-        p1_after_first = db.query(ContestSessionProblemsStatus).filter(
-            ContestSessionProblemsStatus.session_id == session_id,
-            ContestSessionProblemsStatus.problem_number == 1
+        db.expire_all()
+        p1_after_first = db.query(ContestSession).filter(
+            ContestSession.id == session_id
         ).one()
-        first_accepted_at = p1_after_first.accepted_at
-        first_solved_in_min = p1_after_first.solved_in_min
+        first_accepted_at = p1_after_first.p1_accepted_at
+        first_solved_in_min = p1_after_first.p1_solved_in_min
 
         # Second refresh with same data
         second_response = api_client.put(
@@ -894,17 +896,17 @@ class TestRefreshProblemStatus:
         assert second_data['p1_status'] == ProblemStatus.SOLVED.value
 
         # Fetch solved-at timing from DB after second refresh
-        p1_after_second = db.query(ContestSessionProblemsStatus).filter(
-            ContestSessionProblemsStatus.session_id == session_id,
-            ContestSessionProblemsStatus.problem_number == 1
+        db.expire_all()
+        p1_after_second = db.query(ContestSession).filter(
+            ContestSession.id == session_id
         ).one()
-        second_accepted_at = p1_after_second.accepted_at
-        second_solved_in_min = p1_after_second.solved_in_min
+        second_accepted_at = p1_after_second.p1_accepted_at
+        second_solved_in_min = p1_after_second.p1_solved_in_min
 
         # Timing must not be overwritten
         assert first_accepted_at == second_accepted_at
         assert first_solved_in_min == second_solved_in_min
-        assert first_accepted_at == str(submission_time)
+        assert first_accepted_at == submission_time
         assert first_solved_in_min == 5  # 300 seconds = 5 minutes
 
 
@@ -1155,9 +1157,9 @@ class TestEndContestSession:
         db
     ):
         """
-        Test that ending a contest creates a ContestSessionResult record in the DB.
+        Test that ending a contest writes the outcome onto the session row.
         """
-        from api.contest_session.contest_session_models import ContestSessionResult
+        from api.contest_session.contest_session_models import ContestSession
 
         token = create_dummy_running_contest_session_level_21_theme_greedy['token']
         session_id = create_dummy_running_contest_session_level_21_theme_greedy['contest_session']['id']
@@ -1171,12 +1173,17 @@ class TestEndContestSession:
         )
 
         # Query DB directly
-        result = db.query(ContestSessionResult).filter(
-            ContestSessionResult.session_id == session_id
+        db.expire_all()
+        result = db.query(ContestSession).filter(
+            ContestSession.id == session_id
         ).first()
 
         assert result is not None
-        assert result.solved_count == 0
+        # solved_count is no longer stored; nothing solved means every slot is UNSOLVED
+        assert all(
+            slot.status == ProblemStatus.UNSOLVED.value
+            for slot in result.problem_slots()
+        )
         assert result.performance == 950
         assert result.rating_before == 1400
         assert result.rating_after == 1370
@@ -1192,7 +1199,7 @@ class TestEndContestSession:
         """
         When user has no TheMCP rating but has a Codeforces rating, use CF rating as rating_before.
         """
-        from api.contest_session.contest_session_models import ContestSessionResult
+        from api.contest_session.contest_session_models import ContestSession
         from unittest.mock import Mock
 
         token = create_dummy_running_contest_session_level_21_theme_greedy['token']
@@ -1233,8 +1240,9 @@ class TestEndContestSession:
         )
         assert response.status_code == 204
 
-        result = db.query(ContestSessionResult).filter(
-            ContestSessionResult.session_id == session_id
+        db.expire_all()
+        result = db.query(ContestSession).filter(
+            ContestSession.id == session_id
         ).first()
 
         assert result is not None
@@ -1253,7 +1261,7 @@ class TestEndContestSession:
         """
         When user has no TheMCP rating and Codeforces rating is null (unrated), use 1400 as rating_before.
         """
-        from api.contest_session.contest_session_models import ContestSessionResult
+        from api.contest_session.contest_session_models import ContestSession
 
         token = create_dummy_running_contest_session_level_21_theme_greedy['token']
         session_id = create_dummy_running_contest_session_level_21_theme_greedy['contest_session']['id']
@@ -1267,8 +1275,9 @@ class TestEndContestSession:
         )
         assert response.status_code == 204
 
-        result = db.query(ContestSessionResult).filter(
-            ContestSessionResult.session_id == session_id
+        db.expire_all()
+        result = db.query(ContestSession).filter(
+            ContestSession.id == session_id
         ).first()
 
         assert result is not None
@@ -1287,10 +1296,7 @@ class TestEndContestSession:
         Test that when a user has a previous contest result, the rating_before
         uses the previous rating_after value instead of default 1400.
         """
-        from api.contest_session.contest_session_models import (
-            ContestSessionResult,
-            ContestSession
-        )
+        from api.contest_session.contest_session_models import ContestSession
 
         token = create_dummy_running_contest_session_level_21_theme_greedy['token']
         session_id = create_dummy_running_contest_session_level_21_theme_greedy['contest_session']['id']
@@ -1317,19 +1323,13 @@ class TestEndContestSession:
             p3_cf_contestId="999",
             p3_cf_index="C",
             p4_cf_contestId="999",
-            p4_cf_index="D"
-        )
-        db.add(previous_session)
-
-        previous_result = ContestSessionResult(
-            session_id="previous-session-id",
-            solved_count=2,
+            p4_cf_index="D",
             performance=1500,
             rating_before=1400,
             rating_after=1407,
             rating_delta=7
         )
-        db.add(previous_result)
+        db.add(previous_session)
         db.flush()
 
         # No submissions for the current contest
@@ -1818,4 +1818,186 @@ class TestReRollContestSessionProblem:
         # The very first problem (from contest creation) must never have been re-offered
         assert first_ever_key not in seen_p2_keys[1:], (
             "The original problem from contest creation must not reappear after re-rolls"
+        )
+
+
+class TestRatingPlot:
+    """
+    Tests for GET /contest-session/rating-plot.
+
+    This endpoint had no coverage, and the merge changed the query behind it
+    from a join against contest_session_result to a read off the session row.
+    Only the ThemeCP series is exercised here; the Codeforces series is off by
+    default and would need a live call.
+    """
+
+    @staticmethod
+    def _finished_session(user_id: str, index: int, starts_at: int, rating_after: int, rating_delta: int):
+        from api.contest_session.contest_session_models import ContestSession
+
+        values = {
+            "id": f"rating-plot-session-{index}",
+            "user_id": user_id,
+            "level": 21,
+            "theme": "greedy",
+            "duration_in_min": 120,
+            "status": ContestStatus.FINISHED.value,
+            "starts_at": starts_at,
+            "ends_at": starts_at + 7_200,
+            "performance": 1500,
+            "rating_before": rating_after - rating_delta,
+            "rating_after": rating_after,
+            "rating_delta": rating_delta,
+        }
+        for problem_number in (1, 2, 3, 4):
+            values[f"p{problem_number}_cf_contestId"] = "999"
+            values[f"p{problem_number}_cf_index"] = "ABCD"[problem_number - 1]
+            values[f"p{problem_number}_rating"] = 1000 + problem_number * 100
+            values[f"p{problem_number}_status"] = ProblemStatus.UNSOLVED.value
+        return ContestSession(**values)
+
+    def test_rating_plot_returns_themecp_series_chronologically(
+        self,
+        api_client,
+        dummy_user_with_codeforces_handle,
+        db
+    ):
+        """Ratings come back oldest first, reading rating_after off the session."""
+        token = dummy_user_with_codeforces_handle["token"]
+        user_id = dummy_user_with_codeforces_handle["user_id"]
+
+        # Inserted newest first to prove the endpoint does the ordering
+        db.add(self._finished_session(user_id, 2, 1_700_200_000, 1450, 30))
+        db.add(self._finished_session(user_id, 1, 1_700_100_000, 1420, 20))
+        db.add(self._finished_session(user_id, 0, 1_700_000_000, 1400, 10))
+        db.flush()
+
+        response = api_client.get(
+            "/contest-session/rating-plot",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["codeforces_ratings"] == []
+
+        ratings = [item["rating"] for item in data["themecp_ratings"]]
+        deltas = [item["rating_delta"] for item in data["themecp_ratings"]]
+        assert ratings == [1400, 1420, 1450]
+        assert deltas == [10, 20, 30]
+
+    def test_rating_plot_empty_for_user_without_finished_contests(
+        self,
+        api_client,
+        dummy_user_with_codeforces_handle,
+    ):
+        token = dummy_user_with_codeforces_handle["token"]
+
+        response = api_client.get(
+            "/contest-session/rating-plot",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["themecp_ratings"] == []
+
+
+class TestContestHistoryQueryCount:
+    """
+    The history endpoint must issue a constant number of queries.
+
+    It used to fetch the problem ratings and the four problem statuses per row,
+    so a page of 50 cost 103 queries while a page of 10 cost 23. Those queries
+    run one after another, so over a remote database the cost is dominated by
+    round trips rather than by Postgres, and restoring indexes barely moved it.
+    Everything the response needs now lives on the session row.
+
+    Measured after the merge: 3 queries at limit=10, 25 and 50 alike, being the
+    auth lookup plus the count and the page itself.
+
+    The assertion is equality between two page sizes rather than a fixed number,
+    so it keeps testing the property that matters without breaking whenever the
+    constant per-request overhead changes.
+    """
+
+    @staticmethod
+    def _build_finished_session(user_id: str, index: int):
+        """A finished session with every column the history response reads."""
+        from api.contest_session.contest_session_models import ContestSession
+
+        values = {
+            "id": f"query-count-session-{index}",
+            "user_id": user_id,
+            "level": 21,
+            "theme": "greedy",
+            "duration_in_min": 120,
+            "status": ContestStatus.FINISHED.value,
+            "starts_at": 1_700_000_000 + index * 10_000,
+            "ends_at": 1_700_000_000 + index * 10_000 + 7_200,
+            "performance": 1500,
+            "rating_before": 1400,
+            "rating_after": 1407,
+            "rating_delta": 7,
+        }
+        for problem_number in (1, 2, 3, 4):
+            values[f"p{problem_number}_cf_contestId"] = "999"
+            values[f"p{problem_number}_cf_index"] = "ABCD"[problem_number - 1]
+            values[f"p{problem_number}_rating"] = 1000 + problem_number * 100
+            values[f"p{problem_number}_status"] = ProblemStatus.UNSOLVED.value
+        return ContestSession(**values)
+
+    @staticmethod
+    def _count_queries_for_history(api_client, token: str, limit: int) -> tuple[int, int]:
+        """Return (queries issued, items returned) for one history request."""
+        from sqlalchemy import event
+        from sqlalchemy.engine import Engine
+
+        executed: list[str] = []
+
+        def record_query(conn, cursor, statement, parameters, context, executemany):
+            executed.append(statement)
+
+        event.listen(Engine, "after_cursor_execute", record_query)
+        try:
+            response = api_client.get(
+                "/contest-session/history",
+                params={"skip": 0, "limit": limit},
+                headers={"Authorization": f"Bearer {token}"}
+            )
+        finally:
+            event.remove(Engine, "after_cursor_execute", record_query)
+
+        assert response.status_code == 200
+        return len(executed), len(response.json()["items"])
+
+    def test_history_query_count_does_not_grow_with_page_size(
+        self,
+        api_client,
+        dummy_user_with_codeforces_handle,
+        db
+    ):
+        """
+        Asking for 50 rows must cost the same number of queries as asking for 10.
+        """
+        token = dummy_user_with_codeforces_handle["token"]
+        user_id = dummy_user_with_codeforces_handle["user_id"]
+
+        for index in range(50):
+            db.add(self._build_finished_session(user_id=user_id, index=index))
+        db.flush()
+
+        small_page_queries, small_page_items = self._count_queries_for_history(
+            api_client=api_client, token=token, limit=10
+        )
+        large_page_queries, large_page_items = self._count_queries_for_history(
+            api_client=api_client, token=token, limit=50
+        )
+
+        # Guard against the assertion passing because nothing was returned
+        assert small_page_items == 10
+        assert large_page_items == 50
+
+        assert large_page_queries == small_page_queries, (
+            f"history issued {small_page_queries} queries at limit=10 but "
+            f"{large_page_queries} at limit=50; the per-row lookups are back"
         )

@@ -271,3 +271,7 @@ scripts/migration_report.txt
 *.dump
 scripts/*.csv
 scripts/*.txt
+
+# Local data-migration workspace (not for version control)
+scripts/data_migration/
+backups/

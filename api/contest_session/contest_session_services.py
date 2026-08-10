@@ -6,6 +6,7 @@ from api.error_constants import ErrorConstants
 from api.user.user_response_models import (
     UserResponseModel,
 )
+from . import contest_session_models as ContestSessionModels
 from . import contest_session_response_models as ContestSessionResponseModels
 from api.codeforces import codeforces_response_model as CodeforcesResponseModel
 from api.contest_level import contest_level_response_models as ContestLevelResponseModels
@@ -112,17 +113,12 @@ class ContestSessionService:
 
         items: list[ContestSessionResponseModels.ContestHistoryItem] = []
 
-        for session, result in rows:
-            contest_level: ContestLevelResponseModels.ContestLevelOutput = ContestLevelService.get_problem_level_ratings(
-                db=db,
-                level=session.level
-            )
+        for session in rows:
             starts_at = session.starts_at
 
-            problem_statuses = ContestSessionRepository.get_problem_statuses_by_id(
-                db=db,
-                session_id=session.id
-            )
+            # Everything below comes off the row we already fetched, so the
+            # loop issues no queries at all.
+            problem_statuses = session.problem_slots()
             status_map = {ps.problem_number: ContestSessionResponseModels.ProblemStatus(ps.status) for ps in problem_statuses}
             solved_in_min_map = {
                 ps.problem_number: ps.solved_in_min if ps.status == ContestSessionResponseModels.ProblemStatus.SOLVED.value else None
@@ -132,8 +128,6 @@ class ContestSessionService:
             contest_history_item: ContestSessionResponseModels.ContestHistoryItem = ContestSessionService._build_contest_history_item(
                 session=session,
                 starts_at=starts_at,
-                result=result,
-                contest_level=contest_level,
                 status_map=status_map,
                 solved_in_min_map=solved_in_min_map
             )
@@ -151,13 +145,15 @@ class ContestSessionService:
     def _build_contest_history_item(
         session,
         starts_at: str,
-        result,
-        contest_level: ContestLevelResponseModels.ContestLevelOutput,
         status_map: dict[int, ContestSessionResponseModels.ProblemStatus],
         solved_in_min_map: dict[int, int | None]
     ) -> ContestSessionResponseModels.ContestHistoryItem:
         """
-        Build a contest history item from a session and result.
+        Build a contest history item from a finished session.
+
+        Ratings come from the session's own snapshot rather than from
+        contest_levels, so editing a level does not retroactively rewrite the
+        ratings shown for contests already played.
         """
         return ContestSessionResponseModels.ContestHistoryItem(
             session_id=session.id,
@@ -165,28 +161,28 @@ class ContestSessionService:
             level=session.level,
             theme=session.theme,
             duration_in_min=session.duration_in_min,
-            performance=result.performance,
-            rating=result.rating_after,
-            rating_delta=result.rating_delta,
+            performance=session.performance,
+            rating=session.rating_after,
+            rating_delta=session.rating_delta,
             p1=ContestSessionResponseModels.ProblemDetail(
                 contestId=session.p1_cf_contestId,
                 index=session.p1_cf_index,
-                rating=contest_level.p1_rating
+                rating=session.p1_rating
             ),
             p2=ContestSessionResponseModels.ProblemDetail(
                 contestId=session.p2_cf_contestId,
                 index=session.p2_cf_index,
-                rating=contest_level.p2_rating
+                rating=session.p2_rating
             ),
             p3=ContestSessionResponseModels.ProblemDetail(
                 contestId=session.p3_cf_contestId,
                 index=session.p3_cf_index,
-                rating=contest_level.p3_rating
+                rating=session.p3_rating
             ),
             p4=ContestSessionResponseModels.ProblemDetail(
                 contestId=session.p4_cf_contestId,
                 index=session.p4_cf_index,
-                rating=contest_level.p4_rating
+                rating=session.p4_rating
             ),
             p1_status=status_map.get(1, ContestSessionResponseModels.ProblemStatus.UNSOLVED),
             p2_status=status_map.get(2, ContestSessionResponseModels.ProblemStatus.UNSOLVED),
@@ -541,11 +537,11 @@ class ContestSessionService:
             session_id=contest_session.id,
             starts_at=starts_at,
             ends_at=ends_at,
-            problems=[
-                (contest_session.p1_cf_contestId, contest_session.p1_cf_index, contest_level.p1_rating),
-                (contest_session.p2_cf_contestId, contest_session.p2_cf_index, contest_level.p2_rating),
-                (contest_session.p3_cf_contestId, contest_session.p3_cf_index, contest_level.p3_rating),
-                (contest_session.p4_cf_contestId, contest_session.p4_cf_index, contest_level.p4_rating),
+            ratings=[
+                contest_level.p1_rating,
+                contest_level.p2_rating,
+                contest_level.p3_rating,
+                contest_level.p4_rating,
             ]
         )
         db.commit()
@@ -631,6 +627,7 @@ class ContestSessionService:
         )
         ContestSessionService._check_problems_solve_sequentially_and_update_problem_statuses(
             db=db,
+            session_id=contest_session.id,
             problem_statuses=problem_statuses,
             accepted_submissions=accepted_submissions,
             starts_at=starts_at
@@ -691,7 +688,8 @@ class ContestSessionService:
     @staticmethod
     def _check_problems_solve_sequentially_and_update_problem_statuses(
         db: Session,
-        problem_statuses: list[ContestSessionResponseModels.ContestSessionProblemsStatus],
+        session_id: str,
+        problem_statuses: list[ContestSessionModels.ProblemSlot],
         accepted_submissions: dict[tuple[str, str], int],
         starts_at: int
     ) -> None:
@@ -720,15 +718,16 @@ class ContestSessionService:
 
             ContestSessionRepository.update_problem_status(
                 db=db,
-                problem_status_id=problem_status.id,
+                session_id=session_id,
+                problem_number=problem_status.problem_number,
                 state=ContestSessionResponseModels.ProblemStatus.SOLVED.value,
-                accepted_at=str(submission_time),
+                accepted_at=submission_time,
                 solved_in_min=solved_in_min
             )
 
             # Update local object for response
             problem_status.status = ContestSessionResponseModels.ProblemStatus.SOLVED.value
-            problem_status.accepted_at = str(submission_time)
+            problem_status.accepted_at = submission_time
             problem_status.solved_in_min = solved_in_min
             last_valid_time = submission_time
 
@@ -844,7 +843,7 @@ class ContestSessionService:
         Runs as a single atomic transaction:
         1. Auto-refreshes problem statuses via Codeforces API
         2. Calculates performance and rating
-        3. Saves the ContestSessionResult
+        3. Saves the outcome onto the session
         4. Updates session status to FINISHED
         5. Updates user contest stats
         6. Commits everything together — a crash mid-flow rolls back all writes.
@@ -882,9 +881,6 @@ class ContestSessionService:
             problem_statuses=problem_statuses
         )
 
-        # Count solved problems
-        solved_count = sum(1 for ps in problem_statuses if ps.status == ContestSessionResponseModels.ProblemStatus.SOLVED.value)
-
         # Get the user's last contest result for rating_before
         last_result = ContestSessionRepository.get_last_contest_result(
             db=db,
@@ -907,21 +903,14 @@ class ContestSessionService:
 
         rating_delta = rating_after - effective_rating_before
 
-        # Save contest result
+        # Save contest result and mark the session FINISHED in one write
         ContestSessionRepository.save_contest_result(
             db=db,
             session_id=contest_session.id,
-            solved_count=solved_count,
             performance=performance,
             rating_before=effective_rating_before,
             rating_after=rating_after,
             rating_delta=rating_delta
-        )
-
-        # Update session status to FINISHED
-        ContestSessionRepository.end_contest_session(
-            db=db,
-            session_id=contest_session.id
         )
 
         user = UserRepository.get_user_by_id(db=db, user_id=user_detail.id)

@@ -12,7 +12,7 @@ from alembic import context
 
 # Import Base and models
 from api.db.pg_database import Base
-from api.contest_session.contest_session_models import ContestSession, ContestSessionSeenProblem, ContestSessionProblemsStatus, ContestSessionResult
+from api.contest_session.contest_session_models import ContestSession, ContestSessionSeenProblem
 from api.user.user_model import Users
 from api.contest_level.contest_level_model import ContestLevel
 from api.contest_theme.contest_theme_model import ContestThemes

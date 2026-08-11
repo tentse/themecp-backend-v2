@@ -556,21 +556,29 @@ class TestLeaderboard:
         ]
         assert [row["rating"] for row in data] == [2200, 1500, 900]
 
-    def test_leaderboard_defaults_to_top_ten(self, api_client, db):
+    def test_leaderboard_defaults_to_the_configured_limit(self, api_client, db):
         """
-        Without an explicit limit the board holds ten entries, and they are the
-        ten highest — not the first ten found.
+        Without an explicit limit the board holds `LEADERBOARD_DEFAULT_LIMIT`
+        entries, and they are the highest rated — not the first ones found.
+
+        Derived from the constant rather than hardcoded, because the limit is
+        configurable per deployment and a fixed number here would fail the moment
+        someone changed it.
         """
-        for index in range(12):
+        from api.user.user_views import LEADERBOARD_DEFAULT_LIMIT
+
+        seeded = LEADERBOARD_DEFAULT_LIMIT + 2
+        for index in range(seeded):
             seed_rated_user(db, f"handle_{index:02d}", 1000 + index, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 10
-        assert data[0]["rating"] == 1011
-        assert data[-1]["rating"] == 1002
+        assert len(data) == LEADERBOARD_DEFAULT_LIMIT
+        # highest seeded rating first, and the two lowest excluded
+        assert data[0]["rating"] == 1000 + seeded - 1
+        assert data[-1]["rating"] == 1000 + seeded - LEADERBOARD_DEFAULT_LIMIT
 
     def test_leaderboard_limit_is_configurable(self, api_client, db):
         """

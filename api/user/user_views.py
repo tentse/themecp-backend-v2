@@ -12,7 +12,9 @@ from sqlalchemy.orm import Session
 from api.codeforces.codeforces_response_model import (
     CodeforcesProblems
 )
+from api.config import get_int
 from api.db.pg_database import get_db
+from api.logging_config import get_logger
 from .user_response_models import (
     UserResponseModel,
     CodeforcesHandleUpdate,
@@ -20,18 +22,22 @@ from .user_response_models import (
 )
 from .user_services import UserService
 
+logger = get_logger(__name__)
+
 DbSession = Annotated[Session, Depends(get_db)]
 
-# How many users the leaderboard shows when the caller does not say. Change the
-# board size by passing ?limit=, or by changing this default.
-LEADERBOARD_DEFAULT_LIMIT = 10
-LEADERBOARD_MAX_LIMIT = 100
+LEADERBOARD_DEFAULT_LIMIT = get_int("LEADERBOARD_DEFAULT_LIMIT")
+LEADERBOARD_MAX_LIMIT = get_int("LEADERBOARD_MAX_LIMIT")
+LEADERBOARD_MIN_CONTESTS = get_int("LEADERBOARD_MIN_CONTESTS")
+LEADERBOARD_ACTIVE_WITHIN_DAYS = get_int("LEADERBOARD_ACTIVE_WITHIN_DAYS")
 
-# Contests a user must have finished before they are ranked.
-LEADERBOARD_MIN_CONTESTS = 10
-
-# How recently a user must have finished a contest to stay on the board.
-LEADERBOARD_ACTIVE_WITHIN_DAYS = 183
+if LEADERBOARD_DEFAULT_LIMIT > LEADERBOARD_MAX_LIMIT:
+    logger.warning(
+        "leaderboard.config.default_above_max",
+        default_limit=LEADERBOARD_DEFAULT_LIMIT,
+        max_limit=LEADERBOARD_MAX_LIMIT,
+    )
+    LEADERBOARD_DEFAULT_LIMIT = LEADERBOARD_MAX_LIMIT
 
 users_router = APIRouter(
     prefix="/users",

@@ -9,6 +9,7 @@ from .user_response_models import (
 from api.codeforces.codeforces_response_model import (
     CodeforcesProblems
 )
+from .user_model import Users
 from .user_repository import UserRepository
 from .rating_utils import get_rating_label
 from api.auth.auth_utils import AuthUtils
@@ -48,6 +49,70 @@ class UserService:
 
 
     @staticmethod
+    def resolve_profile_user(
+        db: Session,
+        token: str | None,
+        user_id: str | None = None
+    ) -> tuple[Users, bool]:
+        """
+        Returns (target user row, is_owner).
+        """
+        if user_id is None:
+            if not token:
+                raise HTTPException(
+                    status_code=401,
+                    detail=ErrorConstants.UNAUTHORIZED
+                )
+            email: str = AuthUtils.verify_token(token=token)
+            return UserRepository.get_user_by_email(db=db, email=email), True
+
+        target: Users = UserRepository.get_user_by_id(db=db, user_id=user_id)
+
+        viewer: Users | None = None
+        if token:
+            try:
+                viewer = UserRepository.get_user_by_email(
+                    db=db,
+                    email=AuthUtils.verify_token(token=token)
+                )
+            except HTTPException:
+                viewer = None
+
+        return target, viewer is not None and viewer.id == target.id
+
+
+    @staticmethod
+    def get_user_profile(
+        db: Session,
+        token: str | None,
+        user_id: str | None = None
+    ) -> UserResponseModel:
+        """
+        Service function to view a profile, either your own or someone else's.
+        """
+        user_data, is_owner = UserService.resolve_profile_user(
+            db=db,
+            token=token,
+            user_id=user_id
+        )
+
+        structlog.contextvars.bind_contextvars(user_id=user_data.id)
+
+        last_contest_rating: int | None = user_data.contest_rating
+
+        return UserResponseModel(
+            id=user_data.id,
+            email=user_data.email if is_owner else None,
+            codeforces_handle=user_data.codeforces_handle,
+            rating=last_contest_rating,
+            max_contest_rating=user_data.max_contest_rating,
+            best_performance=user_data.best_performance,
+            contest_attempts=user_data.contest_attempts or 0,
+            rating_label=get_rating_label(last_contest_rating),
+        )
+
+
+    @staticmethod
     def get_user_by_email_service(db: Session, email: str) -> UserResponseModel:
         """
         Service function to get user details by email.
@@ -71,6 +136,7 @@ class UserService:
 
         return [
             LeaderboardEntry(
+                user_id=user.id,
                 codeforces_handle=user.codeforces_handle,
                 rating=user.contest_rating,
                 rating_label=get_rating_label(user.contest_rating)

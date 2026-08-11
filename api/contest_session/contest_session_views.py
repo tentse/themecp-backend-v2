@@ -18,6 +18,19 @@ logger = get_logger(__name__)
 
 security = HTTPBearer()
 Credentials = Annotated[HTTPAuthorizationCredentials, Depends(security)]
+
+optional_security = HTTPBearer(auto_error=False)
+OptionalCredentials = Annotated[
+    HTTPAuthorizationCredentials | None,
+    Depends(optional_security)
+]
+
+# Query parameter shared by those same endpoints
+ProfileUserId = Annotated[
+    str | None,
+    Query(description="Whose contests to return. Omit for your own.")
+]
+
 DbSession = Annotated[Session, Depends(get_db)]
 
 contest_session_router = APIRouter(
@@ -40,52 +53,65 @@ def get_contest_session(credentials: Credentials, db: DbSession) -> ContestSessi
 
 @contest_session_router.get("/rating-plot", status_code=200)
 def get_rating_plot(
-    credentials: Credentials,
     db: DbSession,
+    credentials: OptionalCredentials = None,
     codeforces_rating: Annotated[
         bool, Query(description="Whether to include codeforces rating in the plot")
     ] = False,
+    user_id: ProfileUserId = None,
 ) -> RatingPlot:
     """
-    Get rating plot for the user themecp and codeforces
+    Get rating plot for the user themecp and codeforces.
+
+    Public when `user_id` is given; otherwise a token identifies the user.
     """
-    token = credentials.credentials
     return ContestSessionService.get_rating_plot_data(
         db=db,
-        token=token,
-        codeforces_rating=codeforces_rating
+        token=credentials.credentials if credentials else None,
+        codeforces_rating=codeforces_rating,
+        user_id=user_id
     )
 
 
 @contest_session_router.get("/heatgraph-data", status_code=200)
 def get_heatgraph_data(
-    credentials: Credentials,
     db: DbSession,
     year: Annotated[int, Query(description="Calendar year (UTC) to return heatgraph data for", ge=2000, le=2100)],
+    credentials: OptionalCredentials = None,
+    user_id: ProfileUserId = None,
 ) -> HeatgraphData:
     """
     Get heatgraph data for the user within the given year.
+
+    Public when `user_id` is given; otherwise a token identifies the user.
     """
-    token = credentials.credentials
-    return ContestSessionService.get_heatgraph_data(db=db, token=token, year=year)
+    return ContestSessionService.get_heatgraph_data(
+        db=db,
+        token=credentials.credentials if credentials else None,
+        year=year,
+        user_id=user_id
+    )
 
 
 @contest_session_router.get("/history", status_code=200)
 def get_contest_history(
-    credentials: Credentials,
     db: DbSession,
+    credentials: OptionalCredentials = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
+    user_id: ProfileUserId = None,
 ) -> ContestHistoryOutput:
     """
-    Get user's contest history (FINISHED sessions only), paginated, latest first.
+    Get a user's contest history (FINISHED sessions only), paginated, latest first.
+
+    Public when `user_id` is given; otherwise a token identifies the user.
     """
-    token = credentials.credentials
     return ContestSessionService.get_contest_history(
         db=db,
-        token=token,
+        token=credentials.credentials if credentials else None,
         skip=skip,
-        limit=limit
+        limit=limit,
+        user_id=user_id
     )
 
 

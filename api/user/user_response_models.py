@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 
 class UserBase(BaseModel):
-    email: str
+    email: str | None = None
     codeforces_handle: str | None = None
 
 class UserResponseModel(UserBase):
@@ -20,6 +20,7 @@ class CodeforcesHandleUpdate(BaseModel):
 
 
 class LeaderboardEntry(BaseModel):
+    user_id: str
     codeforces_handle: str
     rating: int
     rating_label: str

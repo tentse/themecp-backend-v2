@@ -35,15 +35,23 @@ users_router = APIRouter(
 
 @users_router.get("", status_code=200)
 def get_user_details(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(HTTPBearer())],
     db: DbSession,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Depends(HTTPBearer(auto_error=False))
+    ] = None,
+    user_id: Annotated[
+        str | None,
+        Query(description="View user's profile")
+    ] = None,
 ) -> UserResponseModel:
     """
-    Get user details from the provided token.
+    Get a user profile by user id or using token
     """
-    return UserService.get_user_detail_from_token(
+    return UserService.get_user_profile(
         db=db,
-        token=credentials.credentials
+        token=credentials.credentials if credentials else None,
+        user_id=user_id
     )
 
 @users_router.get("/leaderboard", status_code=200)

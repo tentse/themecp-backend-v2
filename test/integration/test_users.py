@@ -92,6 +92,182 @@ class TestGetUser:
 
 
 
+class TestViewUserProfile:
+    """
+    Tests for viewing a profile by user id on GET /users.
+
+    The rule: email is returned only when the caller owns the profile. Everyone
+    else — logged in as somebody else, or not logged in at all — gets the same
+    profile with the email withheld.
+    """
+
+    def test_own_profile_by_id_includes_email(
+        self,
+        api_client,
+        dummy_user_with_codeforces_handle
+    ):
+        """
+        Asking for your own id while holding your own token is still you looking
+        at yourself, so the email stays.
+        """
+        response = api_client.get(
+            "/users",
+            params={"user_id": dummy_user_with_codeforces_handle["user_id"]},
+            headers={"Authorization": f"Bearer {dummy_user_with_codeforces_handle['token']}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == dummy_user_with_codeforces_handle["email"]
+        assert data["id"] == dummy_user_with_codeforces_handle["user_id"]
+
+    def test_other_users_profile_hides_email_when_logged_in(
+        self,
+        api_client,
+        db,
+        dummy_user_with_codeforces_handle
+    ):
+        """
+        A signed-in user viewing somebody else's profile must not see their email.
+        """
+        other = seed_rated_user(db, "someone_else", 1500, email="someone_else@example.com")
+
+        response = api_client.get(
+            "/users",
+            params={"user_id": other.id},
+            headers={"Authorization": f"Bearer {dummy_user_with_codeforces_handle['token']}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] is None
+        assert data["id"] == other.id
+        assert "someone_else@example.com" not in response.text
+
+    def test_other_users_profile_hides_email_when_anonymous(self, api_client, db):
+        """
+        No token at all: the profile is still viewable, the email still is not.
+        """
+        other = seed_rated_user(db, "public_profile", 1600, email="public_profile@example.com")
+
+        response = api_client.get("/users", params={"user_id": other.id})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] is None
+        assert "public_profile@example.com" not in response.text
+
+    def test_public_profile_returns_every_non_email_field(self, api_client, db):
+        """
+        Withholding the email must not blank out the rest of the profile — the
+        whole point is that other people can see the stats.
+        """
+        other = seed_rated_user(
+            db,
+            "full_stats",
+            1500,
+            email="full_stats@example.com",
+            max_contest_rating=1720,
+            best_performance=1800,
+        )
+
+        response = api_client.get("/users", params={"user_id": other.id})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] is None
+        assert data["id"] == other.id
+        assert data["codeforces_handle"] == "full_stats"
+        assert data["rating"] == 1500
+        assert data["max_contest_rating"] == 1720
+        assert data["best_performance"] == 1800
+        assert data["contest_attempts"] == 1
+        assert data["rating_label"] == "Specialist"
+
+    def test_profile_is_viewable_for_a_user_with_no_codeforces_handle(self, api_client, db):
+        """
+        Most accounts have no handle. Keying on id rather than handle is what
+        makes their profiles reachable at all.
+        """
+        other = seed_rated_user(db, None, 1300, email="no_handle@example.com")
+
+        response = api_client.get("/users", params={"user_id": other.id})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["codeforces_handle"] is None
+        assert data["rating"] == 1300
+        assert data["email"] is None
+
+    def test_unknown_user_id_returns_404(self, api_client):
+        """
+        An id nobody owns is a missing profile, not an empty one.
+        """
+        response = api_client.get("/users", params={"user_id": "no_such_user_id"})
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == ErrorConstants.USER_NOT_FOUND
+
+    def test_no_user_id_and_no_token_is_unauthorized(self, api_client):
+        """
+        Without an id there is nothing to look up, so the caller must say who
+        they are.
+        """
+        response = api_client.get("/users")
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == ErrorConstants.UNAUTHORIZED
+
+    def test_invalid_token_still_shows_the_public_profile(self, api_client, db):
+        """
+        A stale or malformed token only means "not the owner" when an id is
+        given. Returning 401 here would sign a browsing user out of the app
+        merely for looking at somebody else's profile.
+        """
+        other = seed_rated_user(db, "browsed_profile", 1400, email="browsed_profile@example.com")
+
+        response = api_client.get(
+            "/users",
+            params={"user_id": other.id},
+            headers={"Authorization": "Bearer this-is-not-a-valid-token"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] is None
+        assert data["id"] == other.id
+
+    def test_invalid_token_without_user_id_still_401s(self, api_client):
+        """
+        The other half of the rule: with nothing to look up, a bad token is a
+        hard failure and keeps its original message.
+        """
+        response = api_client.get(
+            "/users",
+            headers={"Authorization": "Bearer this-is-not-a-valid-token"}
+        )
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == ErrorConstants.INVALID_TOKEN
+
+    def test_no_user_id_with_token_is_unchanged(
+        self,
+        api_client,
+        dummy_user_with_codeforces_handle
+    ):
+        """
+        Backward compatibility: the frontend calls GET /users with no query
+        parameter to load the signed-in user, and that must keep working.
+        """
+        response = api_client.get(
+            "/users",
+            headers={"Authorization": f"Bearer {dummy_user_with_codeforces_handle['token']}"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["email"] == dummy_user_with_codeforces_handle["email"]
+
+
 class TestGetCodeforcesProblemForHandleVerification:
     """
     This test class run test for getting codeforces problem
@@ -257,12 +433,19 @@ class TestUpdateCodeforcesHandle:
         assert False == data
 
 
-def seed_rated_user(db, codeforces_handle, contest_rating):
+def seed_rated_user(
+    db,
+    codeforces_handle,
+    contest_rating,
+    email=None,
+    max_contest_rating=None,
+    best_performance=None,
+):
     """
     Insert a user row directly.
 
-    The leaderboard only reads `users`, so driving registration and a full
-    contest just to set a rating would add noise without adding coverage.
+    Reading endpoints only need rows in `users`, so driving registration and a
+    full contest just to set a rating would add noise without adding coverage.
     `contest_attempts` is NOT NULL, so it always gets a value.
     """
     from api.user.user_model import Users
@@ -270,9 +453,11 @@ def seed_rated_user(db, codeforces_handle, contest_rating):
 
     user = Users(
         id=Utils.generate_id(),
-        email=f"{Utils.generate_id()}@example.com",
+        email=email or f"{Utils.generate_id()}@example.com",
         codeforces_handle=codeforces_handle,
         contest_rating=contest_rating,
+        max_contest_rating=max_contest_rating,
+        best_performance=best_performance,
         contest_attempts=1 if contest_rating is not None else 0,
     )
     db.add(user)
@@ -386,7 +571,7 @@ class TestLeaderboard:
         assert response.status_code == 200
         data = response.json()
         assert len(data) == 1
-        assert set(data[0].keys()) == {"codeforces_handle", "rating", "rating_label"}
+        assert set(data[0].keys()) == {"user_id", "codeforces_handle", "rating", "rating_label"}
         assert "email" not in response.text
         assert "@example.com" not in response.text
 

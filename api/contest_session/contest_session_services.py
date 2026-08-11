@@ -49,11 +49,20 @@ class ContestSessionService:
 
 
     @staticmethod
-    def get_rating_plot_data(db: Session, token: str, codeforces_rating: bool = False) -> ContestSessionResponseModels.RatingPlot:
+    def get_rating_plot_data(
+        db: Session,
+        token: str | None,
+        codeforces_rating: bool = False,
+        user_id: str | None = None
+    ) -> ContestSessionResponseModels.RatingPlot:
         """
         Get rating plot for the user themecp and codeforces
         """
-        user_detail: UserResponseModel = UserService.get_user_detail_from_token(db=db, token=token)
+        user_detail, _is_owner = UserService.resolve_profile_user(
+            db=db,
+            token=token,
+            user_id=user_id
+        )
         user_id: str = user_detail.id
 
         raw_themecp = ContestSessionRepository.get_user_themecp_contest_ratings_with_date(
@@ -82,11 +91,20 @@ class ContestSessionService:
 
 
     @staticmethod
-    def get_heatgraph_data(db: Session, token: str, year: int) -> ContestSessionResponseModels.HeatgraphData:
+    def get_heatgraph_data(
+        db: Session,
+        token: str | None,
+        year: int,
+        user_id: str | None = None
+    ) -> ContestSessionResponseModels.HeatgraphData:
         """
         Get heatgraph data: contest attempt count per date for the user within the given year (FINISHED sessions only).
         """
-        user_detail: UserResponseModel = UserService.get_user_detail_from_token(db=db, token=token)
+        user_detail, _is_owner = UserService.resolve_profile_user(
+            db=db,
+            token=token,
+            user_id=user_id
+        )
         user_id: str = user_detail.id
         raw = ContestSessionRepository.get_user_contest_attempts_by_date(db=db, user_id=user_id, year=year)
         items = [
@@ -97,11 +115,21 @@ class ContestSessionService:
 
 
     @staticmethod
-    def get_contest_history(db: Session, token: str, skip: int, limit: int) -> ContestSessionResponseModels.ContestHistoryOutput:
+    def get_contest_history(
+        db: Session,
+        token: str | None,
+        skip: int,
+        limit: int,
+        user_id: str | None = None
+    ) -> ContestSessionResponseModels.ContestHistoryOutput:
         """
-        Get user's contest history (FINISHED sessions only), paginated, latest first.
+        Get a user's contest history (FINISHED sessions only), paginated, latest first.
         """
-        user_detail: UserResponseModel = UserService.get_user_detail_from_token(db=db, token=token)
+        user_detail, _is_owner = UserService.resolve_profile_user(
+            db=db,
+            token=token,
+            user_id=user_id
+        )
         user_id: str = user_detail.id
 
         rows, total_count = ContestSessionRepository.get_user_contest_history_paginated(

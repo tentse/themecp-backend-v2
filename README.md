@@ -4,12 +4,6 @@ A FastAPI REST API for **ThemeCP**, a competitive programming training platform.
 It generates themed practice contests from real [Codeforces](https://codeforces.com)
 problems, then tracks solves, timing, and performance across sessions.
 
-## Status
-
-> **⚠️ This project is not production-ready. See [Security](#security) before deploying it.**
->
-> The authentication flow does not verify identity. Read that section first.
-
 ## Public history
 
 This repository is a sanitized public export of a project previously developed
@@ -127,34 +121,6 @@ Modules: `auth/`, `user/`, `contest_session/`, `contest_level/`, `contest_theme/
 All outbound Codeforces traffic goes through `CodeforcesUtils` in
 [`api/codeforces/codeforces_utils.py`](api/codeforces/codeforces_utils.py) so tests can
 intercept it in one place. Alembic is the source of truth for the schema.
-
-## API documentation
-
-Interactive docs are served at `/api/v2/docs` (Swagger) and `/api/v2/redoc` when the
-server is running. For a frontend-friendly REST reference with request/response shapes
-and TypeScript types, see [`doc/api-v2.md`](doc/api-v2.md).
-
-## Security
-
-**This backend does not currently authenticate users.**
-
-`POST /api/v2/auth/login` accepts an email address and returns a valid 30-day JWT without
-verifying a password, a one-time code, or ownership of that email. Anyone who knows or
-guesses a registered address can obtain full access to that account. There is no password
-handling anywhere in the codebase — the login service was written as a placeholder and
-never replaced.
-
-Consequently:
-
-- **Do not deploy this publicly as-is.**
-- Run it locally, or behind an authenticating proxy, until the flow is replaced with
-  verified magic-link/OTP or password authentication.
-
-Administrative mutation endpoints are separately protected by `ADMIN_API_TOKEN` and fail
-closed when it is unset. That guard is unaffected by the issue above.
-
-If you find another security problem, please open an issue — or, for anything sensitive,
-contact the maintainer directly rather than filing publicly.
 
 ## Contributing
 

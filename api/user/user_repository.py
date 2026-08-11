@@ -1,12 +1,19 @@
+import time
+
 from .user_model import Users
+from sqlalchemy import exists
 from sqlalchemy.orm import Session
 from api.utils import Utils
 from fastapi import HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 from api.error_constants import ErrorConstants
 from api.logging_config import get_logger
+from api.contest_session.contest_session_models import ContestSession
+from api.contest_session.contest_session_response_models import ContestStatus
 
 logger = get_logger(__name__)
+
+SECONDS_PER_DAY = 86_400
 
 
 class UserRepository:
@@ -169,18 +176,45 @@ class UserRepository:
             ) from e
 
     @staticmethod
-    def get_top_rated_users(db: Session, limit: int) -> list[Users]:
+    def get_top_rated_users(
+        db: Session,
+        limit: int,
+        min_contests: int = 0,
+        active_within_days: int | None = None
+    ) -> list[Users]:
         """
         Repository function to fetch the highest-rated users for the leaderboard.
-        Users without a Codeforces handle are excluded because a leaderboard row
+
+        A user is ranked only if they have a Codeforces handle, a rating, at least
+        `min_contests` finished contests, and — when `active_within_days` is set —
+        at least one finished contest inside that window.
+
+        Recency is written as EXISTS rather than MAX(starts_at) so the query can
+        stop at a user's first recent contest instead of aggregating all of them;
+        `ix_contest_session_user_id_status_starts_at` covers exactly that lookup.
         """
         try:
-            return (
+            query = (
                 db.query(Users)
                 .filter(
                     Users.codeforces_handle.isnot(None),
-                    Users.contest_rating.isnot(None)
+                    Users.contest_rating.isnot(None),
+                    Users.contest_attempts >= min_contests
                 )
+            )
+
+            if active_within_days is not None:
+                cutoff = int(time.time()) - active_within_days * SECONDS_PER_DAY
+                query = query.filter(
+                    exists().where(
+                        ContestSession.user_id == Users.id,
+                        ContestSession.status == ContestStatus.FINISHED.value,
+                        ContestSession.starts_at >= cutoff
+                    )
+                )
+
+            return (
+                query
                 .order_by(Users.contest_rating.desc(), Users.codeforces_handle.asc())
                 .limit(limit)
                 .all()

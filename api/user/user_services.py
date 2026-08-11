@@ -128,11 +128,21 @@ class UserService:
 
 
     @staticmethod
-    def get_leaderboard(db: Session, limit: int) -> list[LeaderboardEntry]:
+    def get_leaderboard(
+        db: Session,
+        limit: int,
+        min_contests: int = 0,
+        active_within_days: int | None = None
+    ) -> list[LeaderboardEntry]:
         """
         Service function to get the top rated users.
         """
-        top_users = UserRepository.get_top_rated_users(db=db, limit=limit)
+        top_users = UserRepository.get_top_rated_users(
+            db=db,
+            limit=limit,
+            min_contests=min_contests,
+            active_within_days=active_within_days
+        )
 
         return [
             LeaderboardEntry(

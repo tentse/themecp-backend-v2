@@ -27,6 +27,12 @@ DbSession = Annotated[Session, Depends(get_db)]
 LEADERBOARD_DEFAULT_LIMIT = 10
 LEADERBOARD_MAX_LIMIT = 100
 
+# Contests a user must have finished before they are ranked.
+LEADERBOARD_MIN_CONTESTS = 10
+
+# How recently a user must have finished a contest to stay on the board.
+LEADERBOARD_ACTIVE_WITHIN_DAYS = 183
+
 users_router = APIRouter(
     prefix="/users",
     tags=["Users"],
@@ -68,8 +74,17 @@ def get_leaderboard(
 ) -> list[LeaderboardEntry]:
     """
     Get the top rated users, highest first.
+
+    Only ranks users who have linked a Codeforces handle, finished at least
+    `LEADERBOARD_MIN_CONTESTS` contests, and finished one of them within the last
+    `LEADERBOARD_ACTIVE_WITHIN_DAYS` days (about six months).
     """
-    return UserService.get_leaderboard(db=db, limit=limit)
+    return UserService.get_leaderboard(
+        db=db,
+        limit=limit,
+        min_contests=LEADERBOARD_MIN_CONTESTS,
+        active_within_days=LEADERBOARD_ACTIVE_WITHIN_DAYS
+    )
 
 
 @users_router.get("/handle-verification-cf-problem", status_code=200)

@@ -107,36 +107,6 @@ class UserRepository:
 
 
     @staticmethod
-    def get_user_by_codeforces_handle(db: Session, codeforces_handle: str) -> Users:
-        """
-        Repository function to get user details by Codeforces handle.
-        """
-
-        try:
-            user: Users = db.query(Users).filter(
-                Users.codeforces_handle == codeforces_handle
-            ).first()
-
-            if not user:
-                raise HTTPException(
-                    status_code=404,
-                    detail=ErrorConstants.USER_NOT_FOUND
-                )
-
-            return user
-        except SQLAlchemyError as e:
-            logger.exception(
-                "db.error",
-                operation="get_user_by_codeforces_handle",
-                codeforces_handle=codeforces_handle
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=ErrorConstants.DB_ERROR_FETCHING_USER
-            ) from e
-
-
-    @staticmethod
     def codeforces_handle_exists(
         db: Session,
         codeforces_handle: str

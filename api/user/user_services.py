@@ -9,6 +9,7 @@ from .user_response_models import (
 from api.codeforces.codeforces_response_model import (
     CodeforcesProblems
 )
+from .user_model import Users
 from .user_repository import UserRepository
 from .rating_utils import get_rating_label
 from api.auth.auth_utils import AuthUtils
@@ -48,35 +49,54 @@ class UserService:
 
 
     @staticmethod
-    def get_user_profile(
+    def resolve_profile_user(
         db: Session,
         token: str | None,
-        codeforces_handle: str | None = None
-    ) -> UserResponseModel:
+        user_id: str | None = None
+    ) -> tuple[Users, bool]:
         """
-        Service function to view a profile, either your own or someone else's.
+        Returns (target user row, is_owner).
         """
-        if codeforces_handle is None:
+        if user_id is None:
             if not token:
                 raise HTTPException(
                     status_code=401,
                     detail=ErrorConstants.UNAUTHORIZED
                 )
-            return UserService.get_user_detail_from_token(db=db, token=token)
+            email: str = AuthUtils.verify_token(token=token)
+            return UserRepository.get_user_by_email(db=db, email=email), True
 
-        user_data = UserRepository.get_user_by_codeforces_handle(
-            db=db,
-            codeforces_handle=codeforces_handle
-        )
+        target: Users = UserRepository.get_user_by_id(db=db, user_id=user_id)
 
-        viewer_email: str | None = None
+        viewer: Users | None = None
         if token:
             try:
-                viewer_email = AuthUtils.verify_token(token=token)
+                viewer = UserRepository.get_user_by_email(
+                    db=db,
+                    email=AuthUtils.verify_token(token=token)
+                )
             except HTTPException:
-                viewer_email = None
+                viewer = None
 
-        is_owner: bool = viewer_email is not None and viewer_email == user_data.email
+        return target, viewer is not None and viewer.id == target.id
+
+
+    @staticmethod
+    def get_user_profile(
+        db: Session,
+        token: str | None,
+        user_id: str | None = None
+    ) -> UserResponseModel:
+        """
+        Service function to view a profile, either your own or someone else's.
+        """
+        user_data, is_owner = UserService.resolve_profile_user(
+            db=db,
+            token=token,
+            user_id=user_id
+        )
+
+        structlog.contextvars.bind_contextvars(user_id=user_data.id)
 
         last_contest_rating: int | None = user_data.contest_rating
 
@@ -116,6 +136,7 @@ class UserService:
 
         return [
             LeaderboardEntry(
+                user_id=user.id,
                 codeforces_handle=user.codeforces_handle,
                 rating=user.contest_rating,
                 rating_label=get_rating_label(user.contest_rating)

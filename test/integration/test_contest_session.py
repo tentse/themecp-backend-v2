@@ -2001,3 +2001,180 @@ class TestContestHistoryQueryCount:
             f"history issued {small_page_queries} queries at limit=10 but "
             f"{large_page_queries} at limit=50; the per-row lookups are back"
         )
+
+class TestPublicContestData:
+    """
+    Viewing another user's contest data by `user_id`.
+
+    Without this, a public profile page silently renders the *viewer's* own
+    history under somebody else's name — the endpoints resolved the user from
+    the token alone, so there was no error to reveal the mix-up.
+    """
+
+    @staticmethod
+    def _finished_session(user_id: str, index: int, performance: int):
+        """
+        A finished session belonging to `user_id`.
+
+        `performance` is the marker used to tell whose history came back.
+        """
+        from api.contest_session.contest_session_models import ContestSession
+
+        values = {
+            "id": f"public-{user_id}-{index}",
+            "user_id": user_id,
+            "level": 21,
+            "theme": "greedy",
+            "duration_in_min": 120,
+            "status": ContestStatus.FINISHED.value,
+            "starts_at": 1_700_000_000 + index * 86_400,
+            "ends_at": 1_700_000_000 + index * 86_400 + 7_200,
+            "performance": performance,
+            "rating_before": 1400,
+            "rating_after": 1407,
+            "rating_delta": 7,
+        }
+        for problem_number in (1, 2, 3, 4):
+            values[f"p{problem_number}_cf_contestId"] = "999"
+            values[f"p{problem_number}_cf_index"] = "ABCD"[problem_number - 1]
+            values[f"p{problem_number}_rating"] = 1000 + problem_number * 100
+            values[f"p{problem_number}_status"] = ProblemStatus.UNSOLVED.value
+        return ContestSession(**values)
+
+    @staticmethod
+    def _seed_other_user(db, email: str, handle: str):
+        from api.user.user_model import Users
+        from api.utils import Utils
+
+        user = Users(
+            id=Utils.generate_id(),
+            email=email,
+            codeforces_handle=handle,
+            contest_rating=1600,
+            contest_attempts=2,
+        )
+        db.add(user)
+        db.flush()
+        return user
+
+    def test_history_of_another_user_is_visible_anonymously(self, api_client, db):
+        """
+        No token at all, still returns that user's finished contests.
+        """
+        other = self._seed_other_user(db, "other_history@example.com", "other_history_cf")
+        db.add(self._finished_session(other.id, 0, performance=1234))
+        db.flush()
+
+        response = api_client.get("/contest-session/history", params={"user_id": other.id})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["performance"] == 1234
+
+    def test_history_of_another_user_is_theirs_not_the_viewers(
+        self,
+        api_client,
+        db,
+        dummy_user_with_codeforces_handle
+    ):
+        """
+        The bug this change exists to prevent: a signed-in viewer asking for
+        someone else's history must get THEIR contests, not their own.
+        """
+        viewer_id = dummy_user_with_codeforces_handle["user_id"]
+        other = self._seed_other_user(db, "target@example.com", "target_cf")
+
+        db.add(self._finished_session(viewer_id, 0, performance=1111))
+        db.add(self._finished_session(other.id, 1, performance=2222))
+        db.flush()
+
+        response = api_client.get(
+            "/contest-session/history",
+            params={"user_id": other.id},
+            headers={"Authorization": f"Bearer {dummy_user_with_codeforces_handle['token']}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["performance"] == 2222, "returned the viewer's history, not the target's"
+
+    def test_history_without_user_id_is_unchanged(
+        self,
+        api_client,
+        db,
+        dummy_user_with_codeforces_handle
+    ):
+        """
+        Omitting the parameter still means "my own history".
+        """
+        viewer_id = dummy_user_with_codeforces_handle["user_id"]
+        other = self._seed_other_user(db, "unrelated@example.com", "unrelated_cf")
+
+        db.add(self._finished_session(viewer_id, 0, performance=1111))
+        db.add(self._finished_session(other.id, 1, performance=2222))
+        db.flush()
+
+        response = api_client.get(
+            "/contest-session/history",
+            headers={"Authorization": f"Bearer {dummy_user_with_codeforces_handle['token']}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert data["items"][0]["performance"] == 1111
+
+    def test_history_without_user_id_or_token_is_unauthorized(self, api_client):
+        """
+        Nothing to look up and nobody identified.
+        """
+        response = api_client.get("/contest-session/history")
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == ErrorConstants.UNAUTHORIZED
+
+    def test_history_for_unknown_user_id_is_404(self, api_client):
+        response = api_client.get(
+            "/contest-session/history",
+            params={"user_id": "no_such_user_id"}
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == ErrorConstants.USER_NOT_FOUND
+
+    def test_rating_plot_of_another_user_is_visible_anonymously(self, api_client, db):
+        other = self._seed_other_user(db, "other_plot@example.com", "other_plot_cf")
+        db.add(self._finished_session(other.id, 0, performance=1500))
+        db.flush()
+
+        response = api_client.get("/contest-session/rating-plot", params={"user_id": other.id})
+
+        assert response.status_code == 200
+        assert len(response.json()["themecp_ratings"]) == 1
+
+    def test_heatgraph_of_another_user_is_visible_anonymously(self, api_client, db):
+        other = self._seed_other_user(db, "other_heat@example.com", "other_heat_cf")
+        db.add(self._finished_session(other.id, 0, performance=1500))
+        db.flush()
+
+        response = api_client.get(
+            "/contest-session/heatgraph-data",
+            params={"user_id": other.id, "year": 2023}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["items"]
+
+    def test_active_session_is_never_public(self, api_client, db):
+        """
+        A contest in REVIEW or RUNNING is a live contest — exposing it by user id
+        would let anyone read the problem set of a contest in progress. This
+        endpoint stays token-only, and the query parameter must not open it.
+        """
+        other = self._seed_other_user(db, "live_contest@example.com", "live_contest_cf")
+
+        response = api_client.get("/contest-session", params={"user_id": other.id})
+
+        assert response.status_code in (401, 403)

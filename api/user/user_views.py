@@ -40,18 +40,18 @@ def get_user_details(
         HTTPAuthorizationCredentials | None,
         Depends(HTTPBearer(auto_error=False))
     ] = None,
-    codeforces_handle: Annotated[
+    user_id: Annotated[
         str | None,
         Query(description="View user's profile")
     ] = None,
 ) -> UserResponseModel:
     """
-    Get a user profile.
+    Get a user profile by user id or using token
     """
     return UserService.get_user_profile(
         db=db,
         token=credentials.credentials if credentials else None,
-        codeforces_handle=codeforces_handle
+        user_id=user_id
     )
 
 @users_router.get("/leaderboard", status_code=200)

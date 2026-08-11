@@ -20,6 +20,7 @@ class CodeforcesHandleUpdate(BaseModel):
 
 
 class LeaderboardEntry(BaseModel):
+    user_id: str
     codeforces_handle: str
     rating: int
     rating_label: str

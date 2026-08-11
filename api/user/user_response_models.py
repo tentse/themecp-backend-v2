@@ -2,7 +2,7 @@ from pydantic import BaseModel
 
 
 class UserBase(BaseModel):
-    email: str
+    email: str | None = None
     codeforces_handle: str | None = None
 
 class UserResponseModel(UserBase):

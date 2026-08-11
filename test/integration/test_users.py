@@ -92,6 +92,152 @@ class TestGetUser:
 
 
 
+class TestViewUserProfile:
+    """
+    Tests for viewing a profile by Codeforces handle on GET /users.
+    """
+
+    def test_own_profile_by_handle_includes_email(
+        self,
+        api_client,
+        dummy_user_with_codeforces_handle
+    ):
+        """
+        Viewing own profile
+        """
+        response = api_client.get(
+            "/users",
+            params={"codeforces_handle": dummy_user_with_codeforces_handle["codeforces_handle"]},
+            headers={"Authorization": f"Bearer {dummy_user_with_codeforces_handle['token']}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] == dummy_user_with_codeforces_handle["email"]
+        assert data["codeforces_handle"] == dummy_user_with_codeforces_handle["codeforces_handle"]
+
+    def test_other_users_profile_hides_email_when_logged_in(
+        self,
+        api_client,
+        db,
+        dummy_user_with_codeforces_handle
+    ):
+        """
+        Viewing other person's profile while logged in
+        """
+        seed_rated_user(db, "someone_else", 1500, email="someone_else@example.com")
+
+        response = api_client.get(
+            "/users",
+            params={"codeforces_handle": "someone_else"},
+            headers={"Authorization": f"Bearer {dummy_user_with_codeforces_handle['token']}"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] is None
+        assert data["codeforces_handle"] == "someone_else"
+        assert "someone_else@example.com" not in response.text
+
+    def test_other_users_profile_hides_email_when_anonymous(self, api_client, db):
+        """
+        Non logged in user viewing other person's profile
+        """
+        seed_rated_user(db, "public_profile", 1600, email="public_profile@example.com")
+
+        response = api_client.get(
+            "/users",
+            params={"codeforces_handle": "public_profile"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] is None
+        assert "public_profile@example.com" not in response.text
+
+    def test_public_profile_returns_every_non_email_field(self, api_client, db):
+        """
+        No email is send for viewing public profile
+        """
+        seed_rated_user(
+            db,
+            "full_stats",
+            1500,
+            email="full_stats@example.com",
+            max_contest_rating=1720,
+            best_performance=1800,
+        )
+
+        response = api_client.get("/users", params={"codeforces_handle": "full_stats"})
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] is None
+        assert data["codeforces_handle"] == "full_stats"
+        assert data["rating"] == 1500
+        assert data["max_contest_rating"] == 1720
+        assert data["best_performance"] == 1800
+        assert data["contest_attempts"] == 1
+        assert data["rating_label"] == "Specialist"
+        assert data["id"]
+
+    def test_unknown_handle_returns_404(self, api_client):
+        """
+        A handle nobody owns is a missing profile, not an empty one.
+        """
+        response = api_client.get(
+            "/users",
+            params={"codeforces_handle": "no_such_handle_anywhere"}
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == ErrorConstants.USER_NOT_FOUND
+
+    def test_no_handle_and_no_token_is_unauthorized(self, api_client):
+        """
+        Without a handle there is nothing to look up, so the caller must say who
+        they are.
+        """
+        response = api_client.get("/users")
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == ErrorConstants.UNAUTHORIZED
+
+    def test_invalid_token_still_shows_the_public_profile(self, api_client, db):
+        """
+        Invalid token but valid handle profile requested success
+        """
+        seed_rated_user(db, "browsed_profile", 1400, email="browsed_profile@example.com")
+
+        response = api_client.get(
+            "/users",
+            params={"codeforces_handle": "browsed_profile"},
+            headers={"Authorization": "Bearer this-is-not-a-valid-token"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["email"] is None
+        assert data["codeforces_handle"] == "browsed_profile"
+
+    def test_no_handle_with_token_is_unchanged(
+        self,
+        api_client,
+        dummy_user_with_codeforces_handle
+    ):
+        """
+        Backward compatibility: the frontend calls GET /users with no query
+        parameter to load the signed-in user, and that must keep working.
+        """
+        response = api_client.get(
+            "/users",
+            headers={"Authorization": f"Bearer {dummy_user_with_codeforces_handle['token']}"}
+        )
+
+        assert response.status_code == 200
+        assert response.json()["email"] == dummy_user_with_codeforces_handle["email"]
+
+
 class TestGetCodeforcesProblemForHandleVerification:
     """
     This test class run test for getting codeforces problem
@@ -257,12 +403,19 @@ class TestUpdateCodeforcesHandle:
         assert False == data
 
 
-def seed_rated_user(db, codeforces_handle, contest_rating):
+def seed_rated_user(
+    db,
+    codeforces_handle,
+    contest_rating,
+    email=None,
+    max_contest_rating=None,
+    best_performance=None,
+):
     """
     Insert a user row directly.
 
-    The leaderboard only reads `users`, so driving registration and a full
-    contest just to set a rating would add noise without adding coverage.
+    Reading endpoints only need rows in `users`, so driving registration and a
+    full contest just to set a rating would add noise without adding coverage.
     `contest_attempts` is NOT NULL, so it always gets a value.
     """
     from api.user.user_model import Users
@@ -270,9 +423,11 @@ def seed_rated_user(db, codeforces_handle, contest_rating):
 
     user = Users(
         id=Utils.generate_id(),
-        email=f"{Utils.generate_id()}@example.com",
+        email=email or f"{Utils.generate_id()}@example.com",
         codeforces_handle=codeforces_handle,
         contest_rating=contest_rating,
+        max_contest_rating=max_contest_rating,
+        best_performance=best_performance,
         contest_attempts=1 if contest_rating is not None else 0,
     )
     db.add(user)

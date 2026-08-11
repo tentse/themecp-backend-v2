@@ -48,6 +48,51 @@ class UserService:
 
 
     @staticmethod
+    def get_user_profile(
+        db: Session,
+        token: str | None,
+        codeforces_handle: str | None = None
+    ) -> UserResponseModel:
+        """
+        Service function to view a profile, either your own or someone else's.
+        """
+        if codeforces_handle is None:
+            if not token:
+                raise HTTPException(
+                    status_code=401,
+                    detail=ErrorConstants.UNAUTHORIZED
+                )
+            return UserService.get_user_detail_from_token(db=db, token=token)
+
+        user_data = UserRepository.get_user_by_codeforces_handle(
+            db=db,
+            codeforces_handle=codeforces_handle
+        )
+
+        viewer_email: str | None = None
+        if token:
+            try:
+                viewer_email = AuthUtils.verify_token(token=token)
+            except HTTPException:
+                viewer_email = None
+
+        is_owner: bool = viewer_email is not None and viewer_email == user_data.email
+
+        last_contest_rating: int | None = user_data.contest_rating
+
+        return UserResponseModel(
+            id=user_data.id,
+            email=user_data.email if is_owner else None,
+            codeforces_handle=user_data.codeforces_handle,
+            rating=last_contest_rating,
+            max_contest_rating=user_data.max_contest_rating,
+            best_performance=user_data.best_performance,
+            contest_attempts=user_data.contest_attempts or 0,
+            rating_label=get_rating_label(last_contest_rating),
+        )
+
+
+    @staticmethod
     def get_user_by_email_service(db: Session, email: str) -> UserResponseModel:
         """
         Service function to get user details by email.

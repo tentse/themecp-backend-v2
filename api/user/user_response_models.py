@@ -17,3 +17,9 @@ class CodeforcesHandleUpdate(BaseModel):
     codeforces_handle: str
     contestID: str
     index: str
+
+
+class LeaderboardEntry(BaseModel):
+    codeforces_handle: str
+    rating: int
+    rating_label: str

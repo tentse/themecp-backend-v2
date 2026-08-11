@@ -255,3 +255,211 @@ class TestUpdateCodeforcesHandle:
         assert response.status_code == 200
         data = response.json()
         assert False == data
+
+
+def seed_rated_user(db, codeforces_handle, contest_rating):
+    """
+    Insert a user row directly.
+
+    The leaderboard only reads `users`, so driving registration and a full
+    contest just to set a rating would add noise without adding coverage.
+    `contest_attempts` is NOT NULL, so it always gets a value.
+    """
+    from api.user.user_model import Users
+    from api.utils import Utils
+
+    user = Users(
+        id=Utils.generate_id(),
+        email=f"{Utils.generate_id()}@example.com",
+        codeforces_handle=codeforces_handle,
+        contest_rating=contest_rating,
+        contest_attempts=1 if contest_rating is not None else 0,
+    )
+    db.add(user)
+    db.flush()
+    return user
+
+
+class TestLeaderboard:
+    """
+    Tests for the public GET /users/leaderboard endpoint.
+    """
+
+    def test_leaderboard_empty(self, api_client):
+        """
+        With no users at all, the leaderboard is an empty list rather than an error.
+        """
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_leaderboard_is_ordered_by_rating_descending(self, api_client, db):
+        """
+        Highest rating first.
+        """
+        seed_rated_user(db, "middle_handle", 1500)
+        seed_rated_user(db, "highest_handle", 2200)
+        seed_rated_user(db, "lowest_handle", 900)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert [row["codeforces_handle"] for row in data] == [
+            "highest_handle",
+            "middle_handle",
+            "lowest_handle",
+        ]
+        assert [row["rating"] for row in data] == [2200, 1500, 900]
+
+    def test_leaderboard_defaults_to_top_ten(self, api_client, db):
+        """
+        Without an explicit limit the board holds ten entries, and they are the
+        ten highest — not the first ten found.
+        """
+        for index in range(12):
+            seed_rated_user(db, f"handle_{index:02d}", 1000 + index)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 10
+        assert data[0]["rating"] == 1011
+        assert data[-1]["rating"] == 1002
+
+    def test_leaderboard_limit_is_configurable(self, api_client, db):
+        """
+        The whole point of the query parameter: 10 today, 15 tomorrow, no redeploy.
+        """
+        for index in range(20):
+            seed_rated_user(db, f"handle_{index:02d}", 1000 + index)
+
+        response = api_client.get("/users/leaderboard", params={"limit": 15})
+
+        assert response.status_code == 200
+        assert len(response.json()) == 15
+
+    def test_leaderboard_excludes_users_without_a_codeforces_handle(self, api_client, db):
+        """
+        A row with no handle has nothing to display, so it is left out even when
+        it outranks everyone. This is the agreed product rule and most of the
+        highest-rated accounts in production are in exactly this state.
+        """
+        seed_rated_user(db, None, 3000)
+        seed_rated_user(db, "has_a_handle", 1200)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["codeforces_handle"] == "has_a_handle"
+        assert all(row["rating"] != 3000 for row in data)
+
+    def test_leaderboard_excludes_users_without_a_rating(self, api_client, db):
+        """
+        A user who has linked a handle but never finished a contest is unrated
+        and has no place on a ranking.
+        """
+        seed_rated_user(db, "never_competed", None)
+        seed_rated_user(db, "has_competed", 1100)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["codeforces_handle"] == "has_competed"
+
+    def test_leaderboard_exposes_only_public_fields(self, api_client, db):
+        """
+        The endpoint is public, so the payload must carry nothing beyond what it
+        needs to display — no email, no id. This guards against someone later
+        reusing UserResponseModel, which carries both.
+        """
+        seed_rated_user(db, "privacy_check", 1700)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert set(data[0].keys()) == {"codeforces_handle", "rating", "rating_label"}
+        assert "email" not in response.text
+        assert "@example.com" not in response.text
+
+    def test_leaderboard_includes_rating_label(self, api_client, db):
+        """
+        The label comes from the backend so the frontend colours rows from one
+        source of truth instead of its own copy of the thresholds.
+
+        Ratings are checked on band boundaries, where an off-by-one would hide.
+        """
+        seed_rated_user(db, "newbie_edge", 1199)
+        seed_rated_user(db, "pupil_edge", 1200)
+        seed_rated_user(db, "grandmaster_edge", 2400)
+        seed_rated_user(db, "legendary_edge", 3000)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        labels = {
+            row["codeforces_handle"]: row["rating_label"]
+            for row in response.json()
+        }
+        assert labels == {
+            "legendary_edge": "Legendary Grandmaster",
+            "grandmaster_edge": "Grandmaster",
+            "pupil_edge": "Pupil",
+            "newbie_edge": "Newbie",
+        }
+
+    def test_leaderboard_label_matches_the_shared_rating_utility(self, api_client, db):
+        """
+        The endpoint must not grow its own thresholds — it has to agree with
+        get_rating_label(), which /users already uses.
+        """
+        from api.user.rating_utils import get_rating_label
+
+        seed_rated_user(db, "agreement_check", 2050)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        row = response.json()[0]
+        assert row["rating_label"] == get_rating_label(row["rating"])
+
+    def test_leaderboard_breaks_ties_deterministically(self, api_client, db):
+        """
+        Equal ratings must not reorder between identical calls. `codeforces_handle`
+        is unique, so (rating DESC, handle ASC) is a total order.
+        """
+        seed_rated_user(db, "bravo_tied", 1800)
+        seed_rated_user(db, "alpha_tied", 1800)
+
+        first = api_client.get("/users/leaderboard").json()
+        second = api_client.get("/users/leaderboard").json()
+
+        assert [row["codeforces_handle"] for row in first] == ["alpha_tied", "bravo_tied"]
+        assert first == second
+
+    def test_leaderboard_rejects_out_of_range_limits(self, api_client):
+        """
+        Bounds are enforced by FastAPI, so a caller cannot ask for zero rows or
+        pull the whole user table.
+        """
+        assert api_client.get("/users/leaderboard", params={"limit": 0}).status_code == 422
+        assert api_client.get("/users/leaderboard", params={"limit": 101}).status_code == 422
+
+    def test_leaderboard_needs_no_authentication(self, api_client, db):
+        """
+        Public, like /contest-level and /contest-theme — no Authorization header.
+        """
+        seed_rated_user(db, "public_view", 1300)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        assert response.json()[0]["codeforces_handle"] == "public_view"

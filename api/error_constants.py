@@ -23,6 +23,7 @@ class ErrorConstants:
     DB_ERROR_REGISTERING_USER = "Database error occurred while registering user."
     DB_ERROR_CHECKING_USER_EXISTENCE = "Database error occurred while checking user existence."
     DB_ERROR_FETCHING_USER = "Database error occurred while fetching user."
+    DB_ERROR_FETCHING_LEADERBOARD = "Database error occurred while fetching leaderboard."
     DB_ERROR_UPDATING_CODEFORCES_HANDLE = "Database error occurred while updating Codeforces handle."
     UNAUTHORIZED = "Unauthorized."
     CODEFORCES_HANDLE_ALREADY_EXISTS = "Codeforces handle already exists."

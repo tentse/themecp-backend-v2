@@ -169,6 +169,31 @@ class UserRepository:
             ) from e
 
     @staticmethod
+    def get_top_rated_users(db: Session, limit: int) -> list[Users]:
+        """
+        Repository function to fetch the highest-rated users for the leaderboard.
+        Users without a Codeforces handle are excluded because a leaderboard row
+        """
+        try:
+            return (
+                db.query(Users)
+                .filter(
+                    Users.codeforces_handle.isnot(None),
+                    Users.contest_rating.isnot(None)
+                )
+                .order_by(Users.contest_rating.desc(), Users.codeforces_handle.asc())
+                .limit(limit)
+                .all()
+            )
+        except SQLAlchemyError as e:
+            logger.exception("db.error", operation="get_top_rated_users", limit=limit)
+            raise HTTPException(
+                status_code=503,
+                detail=ErrorConstants.DB_ERROR_FETCHING_LEADERBOARD
+            ) from e
+
+
+    @staticmethod
     def update_user_contest_stats(
         db: Session,
         user_id: str,

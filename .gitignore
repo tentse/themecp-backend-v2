@@ -260,18 +260,13 @@ schema.sql
 review.md
 /review.md
 
-# Output from scripts/migrate_user_data.py
-scripts/backups/
-scripts/migration_skipped.csv
-scripts/migration_report.txt
+# Operational tooling and the API reference are kept out of version control.
+# These stay on disk and keep working; they are simply not published.
+scripts/
+doc/
 
 # Belt-and-braces: production data exports must never be committed. These
 # outputs contain real user email addresses and database dumps.
 *.sql.gz
 *.dump
-scripts/*.csv
-scripts/*.txt
-
-# Local data-migration workspace (not for version control)
-scripts/data_migration/
 backups/

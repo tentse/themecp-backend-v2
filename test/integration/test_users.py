@@ -440,16 +440,30 @@ def seed_rated_user(
     email=None,
     max_contest_rating=None,
     best_performance=None,
+    contest_attempts=None,
+    last_active_days_ago=0,
 ):
     """
-    Insert a user row directly.
+    Insert a user row directly, plus one finished contest to date their activity.
 
     Reading endpoints only need rows in `users`, so driving registration and a
     full contest just to set a rating would add noise without adding coverage.
     `contest_attempts` is NOT NULL, so it always gets a value.
+
+    Leaderboard tests must pass `contest_attempts` explicitly, because the board
+    filters on it. Left unset it stays at 1, which is what the profile tests
+    expect and which is *below* the leaderboard minimum on purpose.
+
+    The single session exists only to give the user a "last active" date for the
+    leaderboard's recency filter. It deliberately does NOT match
+    `contest_attempts` — the two filters read different sources, and seeding
+    fifteen identical sessions per user would add no coverage.
     """
     from api.user.user_model import Users
     from api.utils import Utils
+
+    if contest_attempts is None:
+        contest_attempts = 1 if contest_rating is not None else 0
 
     user = Users(
         id=Utils.generate_id(),
@@ -458,11 +472,55 @@ def seed_rated_user(
         contest_rating=contest_rating,
         max_contest_rating=max_contest_rating,
         best_performance=best_performance,
-        contest_attempts=1 if contest_rating is not None else 0,
+        contest_attempts=contest_attempts,
     )
     db.add(user)
+
+    if contest_rating is not None:
+        db.add(seed_finished_session(user.id, days_ago=last_active_days_ago))
+
     db.flush()
     return user
+
+
+def seed_finished_session(user_id, days_ago=0):
+    """A finished contest session for `user_id`, dated `days_ago` days back."""
+    import time
+
+    from api.contest_session.contest_session_models import ContestSession
+    from api.contest_session.contest_session_response_models import (
+        ContestStatus,
+        ProblemStatus,
+    )
+    from api.utils import Utils
+
+    starts_at = int(time.time()) - days_ago * 86_400
+    values = {
+        "id": Utils.generate_id(),
+        "user_id": user_id,
+        "level": 21,
+        "theme": "greedy",
+        "duration_in_min": 120,
+        "status": ContestStatus.FINISHED.value,
+        "starts_at": starts_at,
+        "ends_at": starts_at + 7_200,
+        "performance": 1500,
+        "rating_before": 1400,
+        "rating_after": 1407,
+        "rating_delta": 7,
+    }
+    for problem_number in (1, 2, 3, 4):
+        values[f"p{problem_number}_cf_contestId"] = "999"
+        values[f"p{problem_number}_cf_index"] = "ABCD"[problem_number - 1]
+        values[f"p{problem_number}_rating"] = 1000 + problem_number * 100
+        values[f"p{problem_number}_status"] = ProblemStatus.UNSOLVED.value
+    return ContestSession(**values)
+
+
+# Every leaderboard test seeds users at this many contests so they clear the
+# minimum. Kept above it rather than exactly on it, so the boundary is tested in
+# one place instead of accidentally everywhere.
+QUALIFYING_CONTESTS = 15
 
 
 class TestLeaderboard:
@@ -483,9 +541,9 @@ class TestLeaderboard:
         """
         Highest rating first.
         """
-        seed_rated_user(db, "middle_handle", 1500)
-        seed_rated_user(db, "highest_handle", 2200)
-        seed_rated_user(db, "lowest_handle", 900)
+        seed_rated_user(db, "middle_handle", 1500, contest_attempts=QUALIFYING_CONTESTS)
+        seed_rated_user(db, "highest_handle", 2200, contest_attempts=QUALIFYING_CONTESTS)
+        seed_rated_user(db, "lowest_handle", 900, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
@@ -504,7 +562,7 @@ class TestLeaderboard:
         ten highest — not the first ten found.
         """
         for index in range(12):
-            seed_rated_user(db, f"handle_{index:02d}", 1000 + index)
+            seed_rated_user(db, f"handle_{index:02d}", 1000 + index, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
@@ -519,7 +577,7 @@ class TestLeaderboard:
         The whole point of the query parameter: 10 today, 15 tomorrow, no redeploy.
         """
         for index in range(20):
-            seed_rated_user(db, f"handle_{index:02d}", 1000 + index)
+            seed_rated_user(db, f"handle_{index:02d}", 1000 + index, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard", params={"limit": 15})
 
@@ -532,8 +590,8 @@ class TestLeaderboard:
         it outranks everyone. This is the agreed product rule and most of the
         highest-rated accounts in production are in exactly this state.
         """
-        seed_rated_user(db, None, 3000)
-        seed_rated_user(db, "has_a_handle", 1200)
+        seed_rated_user(db, None, 3000, contest_attempts=QUALIFYING_CONTESTS)
+        seed_rated_user(db, "has_a_handle", 1200, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
@@ -549,7 +607,7 @@ class TestLeaderboard:
         and has no place on a ranking.
         """
         seed_rated_user(db, "never_competed", None)
-        seed_rated_user(db, "has_competed", 1100)
+        seed_rated_user(db, "has_competed", 1100, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
@@ -564,7 +622,7 @@ class TestLeaderboard:
         needs to display — no email, no id. This guards against someone later
         reusing UserResponseModel, which carries both.
         """
-        seed_rated_user(db, "privacy_check", 1700)
+        seed_rated_user(db, "privacy_check", 1700, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
@@ -582,10 +640,10 @@ class TestLeaderboard:
 
         Ratings are checked on band boundaries, where an off-by-one would hide.
         """
-        seed_rated_user(db, "newbie_edge", 1199)
-        seed_rated_user(db, "pupil_edge", 1200)
-        seed_rated_user(db, "grandmaster_edge", 2400)
-        seed_rated_user(db, "legendary_edge", 3000)
+        seed_rated_user(db, "newbie_edge", 1199, contest_attempts=QUALIFYING_CONTESTS)
+        seed_rated_user(db, "pupil_edge", 1200, contest_attempts=QUALIFYING_CONTESTS)
+        seed_rated_user(db, "grandmaster_edge", 2400, contest_attempts=QUALIFYING_CONTESTS)
+        seed_rated_user(db, "legendary_edge", 3000, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
@@ -608,7 +666,7 @@ class TestLeaderboard:
         """
         from api.user.rating_utils import get_rating_label
 
-        seed_rated_user(db, "agreement_check", 2050)
+        seed_rated_user(db, "agreement_check", 2050, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
@@ -621,8 +679,8 @@ class TestLeaderboard:
         Equal ratings must not reorder between identical calls. `codeforces_handle`
         is unique, so (rating DESC, handle ASC) is a total order.
         """
-        seed_rated_user(db, "bravo_tied", 1800)
-        seed_rated_user(db, "alpha_tied", 1800)
+        seed_rated_user(db, "bravo_tied", 1800, contest_attempts=QUALIFYING_CONTESTS)
+        seed_rated_user(db, "alpha_tied", 1800, contest_attempts=QUALIFYING_CONTESTS)
 
         first = api_client.get("/users/leaderboard").json()
         second = api_client.get("/users/leaderboard").json()
@@ -642,9 +700,195 @@ class TestLeaderboard:
         """
         Public, like /contest-level and /contest-theme — no Authorization header.
         """
-        seed_rated_user(db, "public_view", 1300)
+        seed_rated_user(db, "public_view", 1300, contest_attempts=QUALIFYING_CONTESTS)
 
         response = api_client.get("/users/leaderboard")
 
         assert response.status_code == 200
         assert response.json()[0]["codeforces_handle"] == "public_view"
+    def test_leaderboard_excludes_users_below_the_minimum_contest_count(
+        self,
+        api_client,
+        db
+    ):
+        """
+        A user's first contest seeds their rating from their live Codeforces
+        rating, so a strong Codeforces competitor lands near the top of the board
+        after one session. Requiring a minimum number of contests is what keeps
+        the ranking about ThemeCP rather than about Codeforces.
+        """
+        from api.user.user_views import LEADERBOARD_MIN_CONTESTS
+
+        seed_rated_user(
+            db, "codeforces_tourist", 3000,
+            contest_attempts=LEADERBOARD_MIN_CONTESTS - 1
+        )
+        seed_rated_user(
+            db, "themecp_regular", 1200,
+            contest_attempts=LEADERBOARD_MIN_CONTESTS
+        )
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        data = response.json()
+        handles = [row["codeforces_handle"] for row in data]
+        assert handles == ["themecp_regular"], (
+            "the 3000-rated user has too few contests and must not appear, "
+            "even though they outrank everyone"
+        )
+
+    def test_leaderboard_includes_users_exactly_at_the_minimum(self, api_client, db):
+        """
+        The boundary itself qualifies — this is where an off-by-one would hide.
+        """
+        from api.user.user_views import LEADERBOARD_MIN_CONTESTS
+
+        seed_rated_user(
+            db, "exactly_at_minimum", 1500,
+            contest_attempts=LEADERBOARD_MIN_CONTESTS
+        )
+        seed_rated_user(
+            db, "one_short", 1600,
+            contest_attempts=LEADERBOARD_MIN_CONTESTS - 1
+        )
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        handles = [row["codeforces_handle"] for row in response.json()]
+        assert handles == ["exactly_at_minimum"]
+
+    def test_leaderboard_ordering_is_unaffected_by_the_minimum(self, api_client, db):
+        """
+        Among users who qualify, ranking is still purely by rating — activity is
+        a gate, not a ranking factor.
+        """
+        from api.user.user_views import LEADERBOARD_MIN_CONTESTS
+
+        seed_rated_user(db, "many_contests_low_rating", 1100,
+                        contest_attempts=LEADERBOARD_MIN_CONTESTS * 5)
+        seed_rated_user(db, "few_contests_high_rating", 2100,
+                        contest_attempts=LEADERBOARD_MIN_CONTESTS)
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        handles = [row["codeforces_handle"] for row in response.json()]
+        assert handles == ["few_contests_high_rating", "many_contests_low_rating"]
+
+    def test_leaderboard_excludes_users_inactive_beyond_the_window(
+        self,
+        api_client,
+        db
+    ):
+        """
+        The board is meant to show people still using ThemeCP. A high rating
+        earned long ago should not hold a slot indefinitely.
+        """
+        from api.user.user_views import LEADERBOARD_ACTIVE_WITHIN_DAYS
+
+        seed_rated_user(
+            db, "long_retired", 3000,
+            contest_attempts=QUALIFYING_CONTESTS,
+            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS + 30
+        )
+        seed_rated_user(
+            db, "still_playing", 1200,
+            contest_attempts=QUALIFYING_CONTESTS,
+            last_active_days_ago=7
+        )
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        handles = [row["codeforces_handle"] for row in response.json()]
+        assert handles == ["still_playing"], (
+            "a 3000-rated user who stopped playing must not outrank an active one"
+        )
+
+    def test_leaderboard_includes_users_exactly_at_the_activity_boundary(
+        self,
+        api_client,
+        db
+    ):
+        """
+        The cutoff is inclusive — the boundary day still counts as active.
+        """
+        from api.user.user_views import LEADERBOARD_ACTIVE_WITHIN_DAYS
+
+        seed_rated_user(
+            db, "on_the_boundary", 1500,
+            contest_attempts=QUALIFYING_CONTESTS,
+            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS - 1
+        )
+        seed_rated_user(
+            db, "one_day_too_old", 1600,
+            contest_attempts=QUALIFYING_CONTESTS,
+            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS + 1
+        )
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        handles = [row["codeforces_handle"] for row in response.json()]
+        assert handles == ["on_the_boundary"]
+
+    def test_leaderboard_applies_both_filters_independently(self, api_client, db):
+        """
+        Activity and contest count are separate gates. Passing one must not
+        excuse failing the other — easy to get wrong if either is implemented as
+        a replacement rather than an addition.
+        """
+        from api.user.user_views import (
+            LEADERBOARD_ACTIVE_WITHIN_DAYS,
+            LEADERBOARD_MIN_CONTESTS,
+        )
+
+        # enough contests, but stopped playing
+        seed_rated_user(
+            db, "experienced_but_gone", 2500,
+            contest_attempts=LEADERBOARD_MIN_CONTESTS,
+            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS + 1
+        )
+        # playing today, but too few contests
+        seed_rated_user(
+            db, "active_but_new", 2400,
+            contest_attempts=LEADERBOARD_MIN_CONTESTS - 1,
+            last_active_days_ago=0
+        )
+        # clears both
+        seed_rated_user(
+            db, "qualifies", 1300,
+            contest_attempts=LEADERBOARD_MIN_CONTESTS,
+            last_active_days_ago=0
+        )
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        handles = [row["codeforces_handle"] for row in response.json()]
+        assert handles == ["qualifies"]
+
+    def test_leaderboard_ignores_activity_from_unfinished_contests(self, api_client, db):
+        """
+        Starting a contest and never finishing it is not activity — otherwise a
+        user could hold a leaderboard slot without completing anything.
+        """
+        from api.contest_session.contest_session_response_models import ContestStatus
+        from api.user.user_views import LEADERBOARD_ACTIVE_WITHIN_DAYS
+
+        user = seed_rated_user(
+            db, "abandoned_contests", 2000,
+            contest_attempts=QUALIFYING_CONTESTS,
+            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS + 30
+        )
+        running = seed_finished_session(user.id, days_ago=0)
+        running.status = ContestStatus.RUNNING.value
+        db.add(running)
+        db.flush()
+
+        response = api_client.get("/users/leaderboard")
+
+        assert response.status_code == 200
+        assert response.json() == []

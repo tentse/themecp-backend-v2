@@ -3,7 +3,8 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from .user_response_models import (
     UserResponseModel,
-    CodeforcesHandleUpdate
+    CodeforcesHandleUpdate,
+    LeaderboardEntry
 )
 from api.codeforces.codeforces_response_model import (
     CodeforcesProblems
@@ -59,6 +60,23 @@ class UserService:
             email=user_data.email,
             codeforces_handle=user_data.codeforces_handle
         )
+
+
+    @staticmethod
+    def get_leaderboard(db: Session, limit: int) -> list[LeaderboardEntry]:
+        """
+        Service function to get the top rated users.
+        """
+        top_users = UserRepository.get_top_rated_users(db=db, limit=limit)
+
+        return [
+            LeaderboardEntry(
+                codeforces_handle=user.codeforces_handle,
+                rating=user.contest_rating,
+                rating_label=get_rating_label(user.contest_rating)
+            )
+            for user in top_users
+        ]
 
 
     @staticmethod

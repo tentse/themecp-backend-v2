@@ -1,7 +1,8 @@
 from typing import Annotated
 from fastapi import (
     APIRouter,
-    Depends
+    Depends,
+    Query
 )
 from fastapi.security import (
     HTTPBearer,
@@ -14,11 +15,17 @@ from api.codeforces.codeforces_response_model import (
 from api.db.pg_database import get_db
 from .user_response_models import (
     UserResponseModel,
-    CodeforcesHandleUpdate
+    CodeforcesHandleUpdate,
+    LeaderboardEntry
 )
 from .user_services import UserService
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+# How many users the leaderboard shows when the caller does not say. Change the
+# board size by passing ?limit=, or by changing this default.
+LEADERBOARD_DEFAULT_LIMIT = 10
+LEADERBOARD_MAX_LIMIT = 100
 
 users_router = APIRouter(
     prefix="/users",
@@ -38,6 +45,24 @@ def get_user_details(
         db=db,
         token=credentials.credentials
     )
+
+@users_router.get("/leaderboard", status_code=200)
+def get_leaderboard(
+    db: DbSession,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=LEADERBOARD_MAX_LIMIT,
+            description="How many users to return, highest rated first"
+        )
+    ] = LEADERBOARD_DEFAULT_LIMIT,
+) -> list[LeaderboardEntry]:
+    """
+    Get the top rated users, highest first.
+    """
+    return UserService.get_leaderboard(db=db, limit=limit)
+
 
 @users_router.get("/handle-verification-cf-problem", status_code=200)
 def get_cf_problem_for_handle_verification(

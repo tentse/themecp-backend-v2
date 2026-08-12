@@ -12,6 +12,33 @@ logger = logging.getLogger(__name__)
 DEFAULTS = {
     "PG_DATABASE_URL": "postgresql://themecp:themecp@localhost:5432/themecp_v2",
 
+    # --- Database connection pool -----------------------------------------
+    # DB_POOL_SIZE + DB_MAX_OVERFLOW is the hard ceiling on connections this
+    # process will open. It must stay below what the server allows, divided by
+    # the number of uvicorn workers — exceeding it produces
+    # "FATAL: too many connections" rather than queueing.
+    #
+    # Managed free tiers are the binding constraint: Aiven's free PostgreSQL
+    # caps max_connections at 20, reserves 3 for superusers and runs its own
+    # services on ~12 more, leaving roughly 5. A local Postgres allows 100, so
+    # these can be raised well above the defaults when self-hosting.
+    #
+    # Size is kept warm and overflow is opened on demand, so a low pool_size on
+    # a distant database means paying connection setup (~1.5s to Aiven) during
+    # a traffic spike. Prefer raising DB_POOL_SIZE over DB_MAX_OVERFLOW.
+    "DB_POOL_SIZE": 3,
+    "DB_MAX_OVERFLOW": 2,
+
+    # Seconds a request waits for a free connection before failing. The wait is
+    # invisible to the caller until it expires, so a long timeout turns
+    # saturation into slow requests rather than errors.
+    "DB_POOL_TIMEOUT": 30,
+
+    # Seconds before an idle connection is discarded and reopened. Managed
+    # providers close idle connections server-side; recycling first means the
+    # application never hands out one the server has already dropped.
+    "DB_POOL_RECYCLE": 300,
+
     "CODEFORCE_API_URL": "https://codeforces.com/api",
 
     "ACCESS_TOKEN_EXPIRE_MINUTES": 43200,  # 30 days

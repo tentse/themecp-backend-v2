@@ -2,12 +2,19 @@ from typing import Generator
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker, declarative_base
-from api.config import get
+from api.config import get, get_int
 from api.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-engine = create_engine(get("PG_DATABASE_URL"))
+engine = create_engine(
+    get("PG_DATABASE_URL"),
+    pool_size=get_int("DB_POOL_SIZE"),
+    max_overflow=get_int("DB_MAX_OVERFLOW"),
+    pool_timeout=get_int("DB_POOL_TIMEOUT"),
+    pool_recycle=get_int("DB_POOL_RECYCLE"),
+    pool_pre_ping=True,
+)
 
 try:
     with engine.connect() as conn:

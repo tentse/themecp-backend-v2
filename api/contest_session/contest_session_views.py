@@ -16,8 +16,12 @@ from api.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-security = HTTPBearer()
-Credentials = Annotated[HTTPAuthorizationCredentials, Depends(security)]
+contest_session_router = APIRouter(
+    prefix="/contest-session",
+    tags=["Contest Session"],
+)
+
+Credentials = Annotated[HTTPAuthorizationCredentials, Depends(HTTPBearer())]
 
 optional_security = HTTPBearer(auto_error=False)
 OptionalCredentials = Annotated[
@@ -25,19 +29,12 @@ OptionalCredentials = Annotated[
     Depends(optional_security)
 ]
 
-# Query parameter shared by those same endpoints
 ProfileUserId = Annotated[
     str | None,
     Query(description="Whose contests to return. Omit for your own.")
 ]
 
 DbSession = Annotated[Session, Depends(get_db)]
-
-contest_session_router = APIRouter(
-    prefix="/contest-session",
-    tags=["Contest Session"],
-)
-
 
 @contest_session_router.get("", status_code=200)
 def get_contest_session(credentials: Credentials, db: DbSession) -> ContestSessionOutput:

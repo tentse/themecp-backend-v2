@@ -41,6 +41,53 @@ services:
       timeout: 5s
       retries: 5
 
+  redis_local:
+    image: redis:7-alpine
+    container_name: themecp-v2-redis-local
+    restart: always
+    ports:
+      - "6379:6379"
+    # A cache, not a database: every value is reconstructible from Postgres or
+    # Codeforces, so persistence is off (--save "" --appendonly no) to avoid
+    # fsync pauses. maxmemory + an eviction policy mirrors managed Redis, which
+    # is always capped — without it, eviction bugs only appear in production.
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - themecp-v2-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis_test:
+    image: redis:7-alpine
+    container_name: themecp-v2-redis-test
+    restart: always
+    ports:
+      - "6380:6379"  # Different port to avoid conflict
+    # Started and stopped by the docker_compose fixture in test/conftest.py,
+    # which also flushes it between tests. Nothing here is persisted, matching
+    # the tmpfs on pg_db_test.
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - themecp-v2-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   themecp-v2-network:
     driver: bridge

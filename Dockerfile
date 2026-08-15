@@ -2,9 +2,6 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-## No extra OS packages needed
-
-
 COPY pyproject.toml poetry.lock ./
 
 RUN pip install poetry && \

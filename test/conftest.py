@@ -10,6 +10,7 @@ import os
 import subprocess
 import time
 import pytest
+import redis
 from typing import Generator
 from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
@@ -22,14 +23,17 @@ from api.auth import auth_response_models
 
 # Test database configuration
 TEST_DB_URL = "postgresql://themecp_test:themecp_test@localhost:5433/themecp_v2_test"
+
+# Port 6380, not 6379: the suite gets its own Redis container, so a test run
+# never flushes or evicts the cache you are developing against on redis_local.
+TEST_REDIS_URL = "redis://localhost:6380/0"
+
 DOCKER_COMPOSE_FILE = "local_setup/docker-compose.yml"
-DOCKER_SERVICE = "pg_db_test"
+DOCKER_SERVICES = ["pg_db_test", "redis_test"]
 MAX_WAIT_TIME = 60  # Maximum seconds to wait for DB to be ready
 
-# Ensure the application and any DB engines use the test database URL
 os.environ["PG_DATABASE_URL"] = TEST_DB_URL
-# Administrative endpoints fail closed when this is unset, so give the suite a
-# known value and send it via the `admin_headers` fixture.
+os.environ["REDIS_URL"] = TEST_REDIS_URL
 os.environ["ADMIN_API_TOKEN"] = "test-admin-api-token"
 
 
@@ -51,47 +55,103 @@ def wait_for_db_ready(db_url: str, max_wait: int = MAX_WAIT_TIME) -> bool:
     return False
 
 
+def wait_for_redis_ready(redis_url: str, max_wait: int = MAX_WAIT_TIME) -> bool:
+    """Wait for Redis to be ready by polling PING."""
+    start_time = time.time()
+
+    while time.time() - start_time < max_wait:
+        try:
+            client = redis.Redis.from_url(redis_url, socket_connect_timeout=1)
+            client.ping()
+            client.close()
+            return True
+        except Exception:
+            time.sleep(1)
+
+    return False
+
+
+# Client for the test cache, created once the container answers PING and reset
+# on teardown. The flush fixture below uses it as a readiness flag too: while it
+# is None there is no Redis to clear, so a unit-test-only run never pays a
+# connection timeout per test.
+_test_cache: redis.Redis | None = None
+
+
 @pytest.fixture(scope="session")
 def docker_compose():
     """
-    Manage Docker Compose lifecycle for test database.
+    Manage Docker Compose lifecycle for the test containers.
 
-    Starts the test database container before tests and stops it after.
+    Starts the test database and the test Redis before tests and stops both
+    after.
     """
-    # Start the test database container
+    global _test_cache
+
+    # Start the test containers
     compose_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), DOCKER_COMPOSE_FILE)
 
-    print("\n🚀 Starting test database container...")
+    print("\n🚀 Starting test containers (PostgreSQL + Redis)...")
     result = subprocess.run(
-        ["docker", "compose", "-f", compose_file, "up", "-d", DOCKER_SERVICE],
+        ["docker", "compose", "-f", compose_file, "up", "-d", *DOCKER_SERVICES],
         capture_output=True,
         text=True
     )
 
     if result.returncode != 0:
-        raise RuntimeError(f"Failed to start Docker container: {result.stderr}")
+        raise RuntimeError(f"Failed to start Docker containers: {result.stderr}")
+
+    def stop_containers():
+        subprocess.run(
+            ["docker", "compose", "-f", compose_file, "stop", *DOCKER_SERVICES],
+            capture_output=True
+        )
 
     # Wait for database to be ready
     print("⏳ Waiting for database to be ready...")
     if not wait_for_db_ready(TEST_DB_URL):
-        # Try to stop container on failure
-        subprocess.run(
-            ["docker", "compose", "-f", compose_file, "stop", DOCKER_SERVICE],
-            capture_output=True
-        )
+        # Try to stop containers on failure
+        stop_containers()
         raise RuntimeError("Database failed to become ready within timeout period")
 
     print("✅ Test database is ready")
 
+    # Redis normally wins this race, but the suite must not start before it
+    # answers PING. A late Redis would make the first tests miss the cache
+    # silently rather than fail, which is the hardest kind of flake to trace.
+    print("⏳ Waiting for Redis to be ready...")
+    if not wait_for_redis_ready(TEST_REDIS_URL):
+        stop_containers()
+        raise RuntimeError("Redis failed to become ready within timeout period")
+
+    _test_cache = redis.Redis.from_url(TEST_REDIS_URL, decode_responses=True)
+    print("✅ Test Redis is ready")
+
     yield
 
-    # Cleanup: Stop the container
-    print("\n🛑 Stopping test database container...")
-    subprocess.run(
-        ["docker", "compose", "-f", compose_file, "stop", DOCKER_SERVICE],
-        capture_output=True
-    )
-    print("✅ Test database container stopped")
+    # Cleanup: Stop the containers
+    print("\n🛑 Stopping test containers...")
+    if _test_cache is not None:
+        _test_cache.close()
+        _test_cache = None
+    stop_containers()
+    print("✅ Test containers stopped")
+
+
+@pytest.fixture(autouse=True)
+def flush_test_cache():
+    """
+    Clear the test cache before every test.
+
+    Cached values sit above the patch point used by `mock_codeforces_api`, so
+    without this one test's fake Codeforces payload would still be cached when
+    the next test runs and the mock would never be consulted. Flushing before
+    rather than after also gives a clean slate when a previous run was
+    interrupted.
+    """
+    if _test_cache is not None:
+        _test_cache.flushdb()
+    yield
 
 
 @pytest.fixture(scope="session")

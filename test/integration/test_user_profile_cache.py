@@ -1,6 +1,5 @@
 from api.cache.redis_client import client as cache_client
 from api.user.user_response_models import UserResponseModel
-from api.utils import Utils
 
 
 def get_cached(cache_key: str) -> str | None:

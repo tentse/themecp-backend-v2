@@ -154,6 +154,27 @@ def flush_test_cache():
     yield
 
 
+@pytest.fixture
+def broken_redis():
+    """
+    Make every Redis command raise, simulating an unreachable server.
+
+    api.cache.cache swallows redis.RedisError and reports a miss, so a request
+    made while this fixture is active must still be served from the database.
+
+    Patching the client rather than stopping the container keeps the test fast
+    and leaves the rest of the session's cache untouched.
+    """
+    from api.cache import cache
+
+    broken = Mock()
+    for method in ("get", "set", "setex", "delete", "ttl", "scan_iter"):
+        getattr(broken, method).side_effect = redis.ConnectionError("connection refused")
+
+    with patch.object(cache, "client", broken):
+        yield broken
+
+
 @pytest.fixture(scope="session")
 def test_db_url(docker_compose):
     """

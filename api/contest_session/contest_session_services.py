@@ -16,7 +16,11 @@ from api.utils import Utils
 from api.user.user_services import UserService
 from api.user.user_repository import UserRepository
 from api.codeforces.codeforces_utils import CodeforcesUtils
+from api.cache import cache
+from api.utils import Utils
+from pydantic import ValidationError
 
+CONTEST_SESSION_CACHE_KEY_PREFIX = "contest_session"
 
 class ContestSessionService:
 
@@ -100,7 +104,16 @@ class ContestSessionService:
         """
         Get heatgraph data: contest attempt count per date for the user within the given year (FINISHED sessions only).
         """
-        user_detail, _is_owner = UserService.resolve_profile_user(
+
+        cache_key = f"{CONTEST_SESSION_CACHE_KEY_PREFIX}:{user_id}:year{year}"
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            try:
+                return ContestSessionResponseModels.HeatgraphData.model_validate(cached_data)
+            except ValidationError:
+                cache.delete(cache_key)
+        
+        user_detail, _ = UserService.resolve_profile_user(
             db=db,
             token=token,
             user_id=user_id
@@ -111,7 +124,11 @@ class ContestSessionService:
             ContestSessionResponseModels.HeatgraphDataItem(date=date_str, contest_attempts=count)
             for date_str, count in raw
         ]
-        return ContestSessionResponseModels.HeatgraphData(items=items)
+        response = ContestSessionResponseModels.HeatgraphData(items=items)
+
+        cache.set(cache_key, response.model_dump_json(), ttl=150)
+
+        return response
 
 
     @staticmethod
@@ -125,7 +142,15 @@ class ContestSessionService:
         """
         Get a user's contest history (FINISHED sessions only), paginated, latest first.
         """
-        user_detail, _is_owner = UserService.resolve_profile_user(
+        cache_key = f"{CONTEST_SESSION_CACHE_KEY_PREFIX}:{user_id}:skip-{skip}:limit-{limit}"
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            try:
+                return ContestSessionResponseModels.ContestHistoryOutput.model_validate(cached_data)
+            except ValidationError:
+                cache.delete(cache_key)
+        
+        user_detail, _ = UserService.resolve_profile_user(
             db=db,
             token=token,
             user_id=user_id
@@ -161,12 +186,16 @@ class ContestSessionService:
             )
             items.append(contest_history_item)
 
-        return ContestSessionResponseModels.ContestHistoryOutput(
+        response = ContestSessionResponseModels.ContestHistoryOutput(
             items=items,
             skip=skip,
             limit=limit,
             total=total_count
         )
+
+        cache.set(cache_key, response.model_dump_json(), 150)
+
+        return response
 
 
     @staticmethod

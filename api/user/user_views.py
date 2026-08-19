@@ -14,7 +14,6 @@ from api.codeforces.codeforces_response_model import (
 )
 from api.config import get_int
 from api.db.pg_database import get_db
-from api.logging_config import get_logger
 from .user_response_models import (
     UserResponseModel,
     CodeforcesHandleUpdate,
@@ -22,28 +21,12 @@ from .user_response_models import (
 )
 from .user_services import UserService
 
-logger = get_logger(__name__)
-
 DbSession = Annotated[Session, Depends(get_db)]
-
-LEADERBOARD_DEFAULT_LIMIT = get_int("LEADERBOARD_DEFAULT_LIMIT")
-LEADERBOARD_MAX_LIMIT = get_int("LEADERBOARD_MAX_LIMIT")
-LEADERBOARD_MIN_CONTESTS = get_int("LEADERBOARD_MIN_CONTESTS")
-LEADERBOARD_ACTIVE_WITHIN_DAYS = get_int("LEADERBOARD_ACTIVE_WITHIN_DAYS")
-
-if LEADERBOARD_DEFAULT_LIMIT > LEADERBOARD_MAX_LIMIT:
-    logger.warning(
-        "leaderboard.config.default_above_max",
-        default_limit=LEADERBOARD_DEFAULT_LIMIT,
-        max_limit=LEADERBOARD_MAX_LIMIT,
-    )
-    LEADERBOARD_DEFAULT_LIMIT = LEADERBOARD_MAX_LIMIT
 
 users_router = APIRouter(
     prefix="/users",
     tags=["Users"],
 )
-
 
 @users_router.get("", status_code=200)
 def get_user_details(
@@ -73,23 +56,19 @@ def get_leaderboard(
         int,
         Query(
             ge=1,
-            le=LEADERBOARD_MAX_LIMIT,
+            le=get_int("LEADERBOARD_MAX_LIMIT"),
             description="How many users to return, highest rated first"
         )
-    ] = LEADERBOARD_DEFAULT_LIMIT,
+    ] = get_int("LEADERBOARD_DEFAULT_LIMIT"),
 ) -> list[LeaderboardEntry]:
     """
     Get the top rated users, highest first.
-
-    Only ranks users who have linked a Codeforces handle, finished at least
-    `LEADERBOARD_MIN_CONTESTS` contests, and finished one of them within the last
-    `LEADERBOARD_ACTIVE_WITHIN_DAYS` days (about six months).
     """
     return UserService.get_leaderboard(
         db=db,
         limit=limit,
-        min_contests=LEADERBOARD_MIN_CONTESTS,
-        active_within_days=LEADERBOARD_ACTIVE_WITHIN_DAYS
+        min_contests=get_int("LEADERBOARD_MIN_CONTESTS"),
+        active_within_days=get_int("LEADERBOARD_ACTIVE_WITHIN_DAYS")
     )
 
 

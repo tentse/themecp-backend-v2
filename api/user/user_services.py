@@ -1,21 +1,31 @@
 import structlog
+import json
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 from .user_response_models import (
     UserResponseModel,
     CodeforcesHandleUpdate,
-    LeaderboardEntry
+    LeaderboardEntry,
+    serialize_models,
+    deserialize_models
 )
 from api.codeforces.codeforces_response_model import (
     CodeforcesProblems
 )
+from api.cache import cache
 from .user_model import Users
 from .user_repository import UserRepository
 from .rating_utils import get_rating_label
 from api.auth.auth_utils import AuthUtils
 from api.codeforces.codeforces_utils import CodeforcesUtils, UserSubmittedProblem
 from api.error_constants import ErrorConstants
+from api.utils import Utils
+from api.logging_config import get_logger
 
+USER_CACHE_KEY_PREFIX = "user"
+
+logger = get_logger(__name__)
 
 class UserService:
 
@@ -90,6 +100,15 @@ class UserService:
         """
         Service function to view a profile, either your own or someone else's.
         """
+
+        cache_key = f"{USER_CACHE_KEY_PREFIX}:{user_id}:{token}"
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            try:
+                return UserResponseModel.model_validate_json(cached_data)
+            except ValidationError:
+                cache.delete(cache_key)
+
         user_data, is_owner = UserService.resolve_profile_user(
             db=db,
             token=token,
@@ -100,7 +119,7 @@ class UserService:
 
         last_contest_rating: int | None = user_data.contest_rating
 
-        return UserResponseModel(
+        response = UserResponseModel(
             id=user_data.id,
             email=user_data.email if is_owner else None,
             codeforces_handle=user_data.codeforces_handle,
@@ -110,6 +129,11 @@ class UserService:
             contest_attempts=user_data.contest_attempts or 0,
             rating_label=get_rating_label(last_contest_rating),
         )
+
+        cache.set(cache_key, response.model_dump_json(), ttl=60)
+
+        return response
+
 
 
     @staticmethod
@@ -137,6 +161,16 @@ class UserService:
         """
         Service function to get the top rated users.
         """
+
+        cache_key = f"leaderboard:{limit}:{min_contests}:{active_within_days}"
+        cached_data = cache.get(cache_key)
+        if cached_data is not None:
+            try:
+                return deserialize_models(cached_data, LeaderboardEntry)
+            except (ValidationError, json.JSONDecodeError):
+                logger.warning("cache.invalidated", cache_key=cache_key)
+                cache.delete(cache_key)
+
         top_users = UserRepository.get_top_rated_users(
             db=db,
             limit=limit,
@@ -144,7 +178,7 @@ class UserService:
             active_within_days=active_within_days
         )
 
-        return [
+        response = [
             LeaderboardEntry(
                 user_id=user.id,
                 codeforces_handle=user.codeforces_handle,
@@ -153,6 +187,10 @@ class UserService:
             )
             for user in top_users
         ]
+
+        cache.set(cache_key, serialize_models(response), 120)
+
+        return response
 
 
     @staticmethod

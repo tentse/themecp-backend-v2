@@ -565,9 +565,8 @@ class TestLeaderboard:
         configurable per deployment and a fixed number here would fail the moment
         someone changed it.
         """
-        from api.user.user_views import LEADERBOARD_DEFAULT_LIMIT
 
-        seeded = LEADERBOARD_DEFAULT_LIMIT + 2
+        seeded = 20 + 2
         for index in range(seeded):
             seed_rated_user(db, f"handle_{index:02d}", 1000 + index, contest_attempts=QUALIFYING_CONTESTS)
 
@@ -575,10 +574,10 @@ class TestLeaderboard:
 
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == LEADERBOARD_DEFAULT_LIMIT
+        assert len(data) == 20
         # highest seeded rating first, and the two lowest excluded
         assert data[0]["rating"] == 1000 + seeded - 1
-        assert data[-1]["rating"] == 1000 + seeded - LEADERBOARD_DEFAULT_LIMIT
+        assert data[-1]["rating"] == 1000 + seeded - 20
 
     def test_leaderboard_limit_is_configurable(self, api_client, db):
         """
@@ -725,15 +724,14 @@ class TestLeaderboard:
         after one session. Requiring a minimum number of contests is what keeps
         the ranking about ThemeCP rather than about Codeforces.
         """
-        from api.user.user_views import LEADERBOARD_MIN_CONTESTS
 
         seed_rated_user(
             db, "codeforces_tourist", 3000,
-            contest_attempts=LEADERBOARD_MIN_CONTESTS - 1
+            contest_attempts=10 - 1
         )
         seed_rated_user(
             db, "themecp_regular", 1200,
-            contest_attempts=LEADERBOARD_MIN_CONTESTS
+            contest_attempts=10
         )
 
         response = api_client.get("/users/leaderboard")
@@ -750,15 +748,14 @@ class TestLeaderboard:
         """
         The boundary itself qualifies — this is where an off-by-one would hide.
         """
-        from api.user.user_views import LEADERBOARD_MIN_CONTESTS
 
         seed_rated_user(
             db, "exactly_at_minimum", 1500,
-            contest_attempts=LEADERBOARD_MIN_CONTESTS
+            contest_attempts=10
         )
         seed_rated_user(
             db, "one_short", 1600,
-            contest_attempts=LEADERBOARD_MIN_CONTESTS - 1
+            contest_attempts=10 - 1
         )
 
         response = api_client.get("/users/leaderboard")
@@ -772,12 +769,11 @@ class TestLeaderboard:
         Among users who qualify, ranking is still purely by rating — activity is
         a gate, not a ranking factor.
         """
-        from api.user.user_views import LEADERBOARD_MIN_CONTESTS
 
         seed_rated_user(db, "many_contests_low_rating", 1100,
-                        contest_attempts=LEADERBOARD_MIN_CONTESTS * 5)
+                        contest_attempts=10 * 5)
         seed_rated_user(db, "few_contests_high_rating", 2100,
-                        contest_attempts=LEADERBOARD_MIN_CONTESTS)
+                        contest_attempts=10)
 
         response = api_client.get("/users/leaderboard")
 
@@ -794,12 +790,11 @@ class TestLeaderboard:
         The board is meant to show people still using ThemeCP. A high rating
         earned long ago should not hold a slot indefinitely.
         """
-        from api.user.user_views import LEADERBOARD_ACTIVE_WITHIN_DAYS
 
         seed_rated_user(
             db, "long_retired", 3000,
             contest_attempts=QUALIFYING_CONTESTS,
-            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS + 30
+            last_active_days_ago=183 + 30
         )
         seed_rated_user(
             db, "still_playing", 1200,
@@ -823,17 +818,16 @@ class TestLeaderboard:
         """
         The cutoff is inclusive — the boundary day still counts as active.
         """
-        from api.user.user_views import LEADERBOARD_ACTIVE_WITHIN_DAYS
 
         seed_rated_user(
             db, "on_the_boundary", 1500,
             contest_attempts=QUALIFYING_CONTESTS,
-            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS - 1
+            last_active_days_ago=183 - 1
         )
         seed_rated_user(
             db, "one_day_too_old", 1600,
             contest_attempts=QUALIFYING_CONTESTS,
-            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS + 1
+            last_active_days_ago=183 + 1
         )
 
         response = api_client.get("/users/leaderboard")
@@ -848,27 +842,23 @@ class TestLeaderboard:
         excuse failing the other — easy to get wrong if either is implemented as
         a replacement rather than an addition.
         """
-        from api.user.user_views import (
-            LEADERBOARD_ACTIVE_WITHIN_DAYS,
-            LEADERBOARD_MIN_CONTESTS,
-        )
 
         # enough contests, but stopped playing
         seed_rated_user(
             db, "experienced_but_gone", 2500,
-            contest_attempts=LEADERBOARD_MIN_CONTESTS,
-            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS + 1
+            contest_attempts=10,
+            last_active_days_ago=183 + 1
         )
         # playing today, but too few contests
         seed_rated_user(
             db, "active_but_new", 2400,
-            contest_attempts=LEADERBOARD_MIN_CONTESTS - 1,
+            contest_attempts=10 - 1,
             last_active_days_ago=0
         )
         # clears both
         seed_rated_user(
             db, "qualifies", 1300,
-            contest_attempts=LEADERBOARD_MIN_CONTESTS,
+            contest_attempts=10,
             last_active_days_ago=0
         )
 
@@ -884,12 +874,11 @@ class TestLeaderboard:
         user could hold a leaderboard slot without completing anything.
         """
         from api.contest_session.contest_session_response_models import ContestStatus
-        from api.user.user_views import LEADERBOARD_ACTIVE_WITHIN_DAYS
 
         user = seed_rated_user(
             db, "abandoned_contests", 2000,
             contest_attempts=QUALIFYING_CONTESTS,
-            last_active_days_ago=LEADERBOARD_ACTIVE_WITHIN_DAYS + 30
+            last_active_days_ago=183 + 30
         )
         running = seed_finished_session(user.id, days_ago=0)
         running.status = ContestStatus.RUNNING.value

@@ -1,5 +1,4 @@
 from pydantic import BaseModel
-import json
 
 
 class UserBase(BaseModel):
@@ -25,12 +24,3 @@ class LeaderboardEntry(BaseModel):
     codeforces_handle: str
     rating: int
     rating_label: str
-
-def serialize_models(models: list[BaseModel]) -> str:
-    """Convert list of Pydantic models to JSON string."""
-    return json.dumps([m.model_dump() for m in models])
-
-def deserialize_models(data: str, model_class) -> list:
-    """Convert JSON string to list of Pydantic models."""
-    parsed = json.loads(data)
-    return [model_class.model_validate(item) for item in parsed]

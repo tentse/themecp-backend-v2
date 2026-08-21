@@ -6,9 +6,7 @@ from pydantic import ValidationError
 from .user_response_models import (
     UserResponseModel,
     CodeforcesHandleUpdate,
-    LeaderboardEntry,
-    serialize_models,
-    deserialize_models
+    LeaderboardEntry
 )
 from api.codeforces.codeforces_response_model import (
     CodeforcesProblems
@@ -166,7 +164,7 @@ class UserService:
         cached_data = cache.get(cache_key)
         if cached_data is not None:
             try:
-                return deserialize_models(cached_data, LeaderboardEntry)
+                return Utils.deserialize_models(cached_data, LeaderboardEntry)
             except (ValidationError, json.JSONDecodeError):
                 logger.warning("cache.invalidated", cache_key=cache_key)
                 cache.delete(cache_key)
@@ -188,7 +186,7 @@ class UserService:
             for user in top_users
         ]
 
-        cache.set(cache_key, serialize_models(response), 120)
+        cache.set(cache_key, Utils.serialize_models(response), 120)
 
         return response
 

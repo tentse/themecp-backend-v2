@@ -27,7 +27,6 @@ logger = get_logger(__name__)
 
 class UserService:
 
-
     @staticmethod
     def get_user_detail_from_token(db: Session, token: str) -> UserResponseModel:
         """

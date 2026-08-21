@@ -62,7 +62,16 @@ class ContestSessionService:
         """
         Get rating plot for the user themecp and codeforces
         """
-        user_detail, _is_owner = UserService.resolve_profile_user(
+
+        cache_key = f"{CONTEST_SESSION_CACHE_KEY_PREFIX}:{user_id}:cf_rating{codeforces_rating}"
+        cache_data = cache.get(cache_key)
+        if cache_data is not None:
+            try:
+                return ContestSessionResponseModels.RatingPlot.model_validate(cache_data)
+            except ValidationError:
+                cache.delete(cache_key)
+
+        user_detail, _ = UserService.resolve_profile_user(
             db=db,
             token=token,
             user_id=user_id
@@ -88,10 +97,14 @@ class ContestSessionService:
                 for date_str, rating, rating_delta in raw_cf
             ]
 
-        return ContestSessionResponseModels.RatingPlot(
+        response = ContestSessionResponseModels.RatingPlot(
             themecp_ratings=themecp_ratings,
             codeforces_ratings=codeforces_ratings,
         )
+
+        cache.set(cache_key, response.model_dump_json(), ttl=150)
+
+        return response
 
 
     @staticmethod

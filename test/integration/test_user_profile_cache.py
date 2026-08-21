@@ -6,8 +6,8 @@ from api.user.user_repository import UserRepository
 from api.user.user_response_models import (
     LeaderboardEntry,
     UserResponseModel,
-    deserialize_models,
 )
+from api.utils import Utils
 
 USER_PROFILE_CACHE_TTL_SECONDS = 60
 LEADERBOARD_CACHE_TTL_SECONDS = 120
@@ -202,7 +202,7 @@ class TestLeaderBoardCacheInRedis:
         stored = get_cached(cache_key)
         assert stored is not None, "nothing was written to the cache"
 
-        rebuilt = deserialize_models(stored, LeaderboardEntry)
+        rebuilt = Utils.deserialize_models(stored, LeaderboardEntry)
         assert [entry.model_dump() for entry in rebuilt] == response.json()
 
     def test_a_second_request_is_served_from_the_cache(
@@ -259,4 +259,4 @@ class TestLeaderBoardCacheInRedis:
 
         stored = get_cached(cache_key)
         assert stored != "not-valid-json", "the corrupt entry was not discarded"
-        assert [entry.model_dump() for entry in deserialize_models(stored, LeaderboardEntry)] == response.json()
+        assert [entry.model_dump() for entry in Utils.deserialize_models(stored, LeaderboardEntry)] == response.json()

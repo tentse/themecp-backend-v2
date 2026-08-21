@@ -1,12 +1,20 @@
+import json
 from sqlalchemy.orm import Session
+from pydantic import ValidationError
 from .contest_level_response_models import (
     ContestLevelInput,
     ContestLevelOutput
 )
 from .contest_level_repository import ContestLevelRepository
+from api.cache import cache
+from api.utils import Utils
+from api.logging_config import get_logger
+
+logger = get_logger(__name__)
+
+CONTEST_LEVEL_CACHE_KEY_PREFIX = "contest_level"
 
 class ContestLevelService:
-
 
     @staticmethod
     def get_problem_level_ratings(db: Session, level: int) -> ContestLevelOutput:
@@ -25,8 +33,18 @@ class ContestLevelService:
 
     @staticmethod
     def get_all_contest_levels(db: Session) -> list[ContestLevelOutput]:
+
+        cache_key = f"{CONTEST_LEVEL_CACHE_KEY_PREFIX}"
+        cache_data = cache.get(cache_key)
+        if cache_data is not None:
+            try:
+                return Utils.deserialize_models(cache_data, ContestLevelOutput)
+            except (ValidationError, json.JSONDecodeError):
+                logger.warning("cache.invalidated", cache_key=cache_key)
+                cache.delete(cache_key)
+
         contest_levels = ContestLevelRepository.get_all_contest_levels(db=db)
-        return [
+        response = [
             ContestLevelOutput(
                 id=cl.id,
                 level=cl.level,
@@ -39,6 +57,10 @@ class ContestLevelService:
             )
             for cl in contest_levels
         ]
+
+        cache.set(cache_key, Utils.serialize_models(response), 1440)
+
+        return response
 
     @staticmethod
     def create_contest_level(db: Session, create_contest_level: ContestLevelInput) -> ContestLevelOutput:

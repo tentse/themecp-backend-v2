@@ -237,31 +237,31 @@ class ContestSessionService:
             p1=ContestSessionResponseModels.ProblemDetail(
                 contestId=session.p1_cf_contestId,
                 index=session.p1_cf_index,
-                rating=session.p1_rating
+                rating=session.p1_rating,
+                status=session.p1_status,
+                solved_in_min=session.p1_solved_in_min
             ),
             p2=ContestSessionResponseModels.ProblemDetail(
                 contestId=session.p2_cf_contestId,
                 index=session.p2_cf_index,
-                rating=session.p2_rating
+                rating=session.p2_rating,
+                status=session.p2_status,
+                solved_in_min=session.p2_solved_in_min
             ),
             p3=ContestSessionResponseModels.ProblemDetail(
                 contestId=session.p3_cf_contestId,
                 index=session.p3_cf_index,
-                rating=session.p3_rating
+                rating=session.p3_rating,
+                status=session.p3_status,
+                solved_in_min=session.p3_solved_in_min
             ),
             p4=ContestSessionResponseModels.ProblemDetail(
                 contestId=session.p4_cf_contestId,
                 index=session.p4_cf_index,
-                rating=session.p4_rating
-            ),
-            p1_status=status_map.get(1, ContestSessionResponseModels.ProblemStatus.UNSOLVED),
-            p2_status=status_map.get(2, ContestSessionResponseModels.ProblemStatus.UNSOLVED),
-            p3_status=status_map.get(3, ContestSessionResponseModels.ProblemStatus.UNSOLVED),
-            p4_status=status_map.get(4, ContestSessionResponseModels.ProblemStatus.UNSOLVED),
-            p1_solved_in_min=solved_in_min_map.get(1),
-            p2_solved_in_min=solved_in_min_map.get(2),
-            p3_solved_in_min=solved_in_min_map.get(3),
-            p4_solved_in_min=solved_in_min_map.get(4),
+                rating=session.p4_rating,
+                status=session.p4_status,
+                solved_in_min=session.p4_solved_in_min
+            )
         )
 
 
@@ -713,22 +713,30 @@ class ContestSessionService:
             p1=ContestSessionResponseModels.ProblemDetail(
                 contestId=contest_session.p1_cf_contestId,
                 index=contest_session.p1_cf_index,
-                rating=contest_level.p1_rating
+                rating=contest_level.p1_rating,
+                status=contest_session.p1_status,
+                solved_in_min=contest_session.p1_solved_in_min
             ),
             p2=ContestSessionResponseModels.ProblemDetail(
                 contestId=contest_session.p2_cf_contestId,
                 index=contest_session.p2_cf_index,
-                rating=contest_level.p2_rating
+                rating=contest_level.p2_rating,
+                status=contest_session.p2_status,
+                solved_in_min=contest_session.p2_solved_in_min
             ),
             p3=ContestSessionResponseModels.ProblemDetail(
                 contestId=contest_session.p3_cf_contestId,
                 index=contest_session.p3_cf_index,
-                rating=contest_level.p3_rating
+                rating=contest_level.p3_rating,
+                status=contest_session.p3_status,
+                solved_in_min=contest_session.p3_solved_in_min
             ),
             p4=ContestSessionResponseModels.ProblemDetail(
                 contestId=contest_session.p4_cf_contestId,
                 index=contest_session.p4_cf_index,
-                rating=contest_level.p4_rating
+                rating=contest_level.p4_rating,
+                status=contest_session.p4_status,
+                solved_in_min=contest_session.p4_solved_in_min
             ),
             p1_status=status_map.get(1, ContestSessionResponseModels.ProblemStatus.UNSOLVED),
             p2_status=status_map.get(2, ContestSessionResponseModels.ProblemStatus.UNSOLVED),

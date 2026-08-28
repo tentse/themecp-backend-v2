@@ -44,18 +44,22 @@ class TestCreateContestSession:
         assert data['p1'] is not None
         assert data['p1']['rating'] is not None
         assert data['p1']['rating'] == 1000
+        assert data['p1']['solved_in_min'] is None
 
         assert data['p2'] is not None
         assert data['p2']['rating'] is not None
         assert data['p2']['rating'] == 1200
+        assert data['p2']['solved_in_min'] is None
 
         assert data['p3'] is not None
         assert data['p3']['rating'] is not None
         assert data['p3']['rating'] == 1400
+        assert data['p3']['solved_in_min'] is None
 
         assert data['p4'] is not None
         assert data['p4']['rating'] is not None
         assert data['p4']['rating'] == 1600
+        assert data['p4']['solved_in_min'] is None
 
     
     def test_create_contest_session_when_session_is_review_returns_same_session(
@@ -86,15 +90,22 @@ class TestCreateContestSession:
         assert data['p1'] is not None
         assert data['p1']['rating'] is not None
         assert data['p1']['rating'] == 1000
+        assert data['p1']['solved_in_min'] is None
+
         assert data['p2'] is not None
         assert data['p2']['rating'] is not None
         assert data['p2']['rating'] == 1200
+        assert data['p2']['solved_in_min'] is None
+
         assert data['p3'] is not None
         assert data['p3']['rating'] is not None
         assert data['p3']['rating'] == 1400
+        assert data['p3']['solved_in_min'] is None
+
         assert data['p4'] is not None
         assert data['p4']['rating'] is not None
         assert data['p4']['rating'] == 1600
+        assert data['p4']['solved_in_min'] is None
 
 
     def test_create_contest_session_when_session_is_running_returns_same_session(
@@ -125,16 +136,22 @@ class TestCreateContestSession:
         assert data['p1'] is not None
         assert data['p1']['rating'] is not None
         assert data['p1']['rating'] == 1000
+        assert data['p1']['solved_in_min'] is None
+
         assert data['p2'] is not None
         assert data['p2']['rating'] is not None
         assert data['p2']['rating'] == 1200
+        assert data['p2']['solved_in_min'] is None
+
         assert data['p3'] is not None
         assert data['p3']['rating'] is not None
         assert data['p3']['rating'] == 1400
+        assert data['p3']['solved_in_min'] is None
+
         assert data['p4'] is not None
         assert data['p4']['rating'] is not None
         assert data['p4']['rating'] == 1600
-
+        assert data['p4']['solved_in_min'] is None
     
     def test_create_contest_session_user_without_codeforces_handle(
         self,
@@ -643,10 +660,14 @@ class TestRefreshProblemStatus:
         assert data['contest_session_id'] == session_id
         assert data['starts_at'] == starts_at
         assert data['ends_at'] == starts_at + 120 * 60
-        assert data['p1_status'] == ProblemStatus.SOLVED.value
-        assert data['p2_status'] == ProblemStatus.UNSOLVED.value
-        assert data['p3_status'] == ProblemStatus.UNSOLVED.value
-        assert data['p4_status'] == ProblemStatus.UNSOLVED.value
+        assert data['p1']['status'] == ProblemStatus.SOLVED.value
+        assert data['p1']['solved_in_min'] is not None
+        assert data['p2']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p2']['solved_in_min'] is None
+        assert data['p3']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p3']['solved_in_min'] is None
+        assert data['p4']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p4']['solved_in_min'] is None
 
     def test_refresh_sequential_order_enforced(
         self,
@@ -690,10 +711,14 @@ class TestRefreshProblemStatus:
         assert data['contest_session_id'] == session_id
         assert data['starts_at'] == starts_at
         assert data['ends_at'] == starts_at + 120 * 60
-        assert data['p1_status'] == ProblemStatus.UNSOLVED.value
-        assert data['p2_status'] == ProblemStatus.UNSOLVED.value
-        assert data['p3_status'] == ProblemStatus.UNSOLVED.value
-        assert data['p4_status'] == ProblemStatus.UNSOLVED.value
+        assert data['p1']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p1']['solved_in_min'] is None
+        assert data['p2']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p2']['solved_in_min'] is None
+        assert data['p3']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p3']['solved_in_min'] is None
+        assert data['p4']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p4']['solved_in_min'] is None
 
 
     def test_refresh_multiple_problems_solved_in_order(
@@ -748,10 +773,14 @@ class TestRefreshProblemStatus:
         assert data['contest_session_id'] == session_id
         assert data['starts_at'] == starts_at
         assert data['ends_at'] == starts_at + 120 * 60
-        assert data['p1_status'] == ProblemStatus.SOLVED.value
-        assert data['p2_status'] == ProblemStatus.SOLVED.value
-        assert data['p3_status'] == ProblemStatus.UNSOLVED.value
-        assert data['p4_status'] == ProblemStatus.UNSOLVED.value
+        assert data['p1']['status'] == ProblemStatus.SOLVED.value
+        assert data['p1']['solved_in_min'] is not None
+        assert data['p2']['status'] == ProblemStatus.SOLVED.value
+        assert data['p2']['solved_in_min'] is not None
+        assert data['p3']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p3']['solved_in_min'] is None
+        assert data['p4']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p4']['solved_in_min'] is None
 
     def test_refresh_problem_b_solved_before_a_does_not_count(
         self,
@@ -805,10 +834,14 @@ class TestRefreshProblemStatus:
         assert data['contest_session_id'] == session_id
         assert data['starts_at'] == starts_at
         assert data['ends_at'] == starts_at + 120 * 60
-        assert data['p1_status'] == ProblemStatus.SOLVED.value
-        assert data['p2_status'] == ProblemStatus.UNSOLVED.value
-        assert data['p3_status'] == ProblemStatus.UNSOLVED.value
-        assert data['p4_status'] == ProblemStatus.UNSOLVED.value
+        assert data['p1']['status'] == ProblemStatus.SOLVED.value
+        assert data['p1']['solved_in_min'] is not None
+        assert data['p2']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p2']['solved_in_min'] is None
+        assert data['p3']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p3']['solved_in_min'] is None
+        assert data['p4']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p4']['solved_in_min'] is None
 
     def test_refresh_no_session_returns_404(
         self,
@@ -876,7 +909,7 @@ class TestRefreshProblemStatus:
         assert first_data['contest_session_id'] == session_id
         assert first_data['starts_at'] == starts_at
         assert first_data['ends_at'] == starts_at + 120 * 60
-        assert first_data['p1_status'] == ProblemStatus.SOLVED.value
+        assert first_data['p1']['status'] == ProblemStatus.SOLVED.value
 
         # Fetch solved-at timing from DB after first refresh
         db.expire_all()
@@ -893,7 +926,7 @@ class TestRefreshProblemStatus:
         )
         assert second_response.status_code == 200
         second_data = second_response.json()
-        assert second_data['p1_status'] == ProblemStatus.SOLVED.value
+        assert second_data['p1']['status'] == ProblemStatus.SOLVED.value
 
         # Fetch solved-at timing from DB after second refresh
         db.expire_all()
@@ -951,7 +984,8 @@ class TestRefreshProblemStatus:
         assert data['contest_session_id'] == session_id
         assert data['starts_at'] == starts_at
         assert data['ends_at'] == starts_at + 120 * 60
-        assert data['p1_status'] == ProblemStatus.UNSOLVED.value
+        assert data['p1']['status'] == ProblemStatus.UNSOLVED.value
+        assert data['p1']['solved_in_min'] is None
 
 
 class TestEndContestSession:
@@ -1188,6 +1222,63 @@ class TestEndContestSession:
         assert result.rating_before == 1400
         assert result.rating_after == 1370
         assert result.rating_delta == -30
+
+    def test_end_contest_saves_solved_problem_and_solve_time_to_db(
+        self,
+        api_client,
+        create_dummy_running_contest_session_level_21_theme_greedy,
+        mock_codeforces_api,
+        db
+    ):
+        """
+        Test that ending a contest persists a solved problem and its solve time.
+        """
+        from api.contest_session.contest_session_models import ContestSession
+
+        token = create_dummy_running_contest_session_level_21_theme_greedy['token']
+        contest_session = create_dummy_running_contest_session_level_21_theme_greedy['contest_session']
+        session_id = contest_session['id']
+        starts_at = contest_session['starts_at']
+        submission_time = starts_at + 300
+
+        self._patch_user_status(mock_codeforces_api, [
+            {
+                "contestId": int(contest_session['p1']['contestId']),
+                "index": contest_session['p1']['index'],
+                "rating": contest_session['p1']['rating'],
+                "verdict": "OK",
+                "creationTimeSeconds": submission_time,
+                "tags": ["greedy"]
+            }
+        ])
+
+        response = api_client.put(
+            f"/contest-session/{session_id}/end",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+
+        assert response.status_code == 204
+
+        db.expire_all()
+        result = db.query(ContestSession).filter(
+            ContestSession.id == session_id
+        ).one()
+
+        assert result.p1_status == ProblemStatus.SOLVED.value
+        assert result.p1_accepted_at == submission_time
+        assert result.p1_solved_in_min == 5
+        assert result.p2_status == ProblemStatus.UNSOLVED.value
+        assert result.p2_solved_in_min is None
+        assert result.p3_status == ProblemStatus.UNSOLVED.value
+        assert result.p3_solved_in_min is None
+        assert result.p4_status == ProblemStatus.UNSOLVED.value
+        assert result.p4_solved_in_min is None
+
+        problem_slots = result.problem_slots()
+        first_problem = next(slot for slot in problem_slots if slot.problem_number == 1)
+        assert first_problem.status == ProblemStatus.SOLVED.value
+        assert first_problem.accepted_at == submission_time
+        assert first_problem.solved_in_min == 5
 
     def test_end_contest_first_contest_uses_codeforces_rating_when_present(
         self,
@@ -1446,10 +1537,10 @@ class TestGetContestHistory:
         assert "rating" in item
         assert "p1" in item
         assert "p2" in item
-        assert item["p1_solved_in_min"] == 5  # starts_at + 300s = 5 min
-        assert item["p2_solved_in_min"] is None
-        assert item["p3_solved_in_min"] is None
-        assert item["p4_solved_in_min"] is None
+        assert item["p1"]["solved_in_min"] == 5  # starts_at + 300s = 5 min
+        assert item["p2"]["solved_in_min"] is None
+        assert item["p3"]["solved_in_min"] is None
+        assert item["p4"]["solved_in_min"] is None
 
     def test_history_includes_solved_in_min_for_multiple_problems(
         self,
@@ -1499,10 +1590,10 @@ class TestGetContestHistory:
         data = response.json()
         assert len(data["items"]) == 1
         item = data["items"][0]
-        assert item["p1_solved_in_min"] == 5   # 300s
-        assert item["p2_solved_in_min"] == 15  # 900s
-        assert item["p3_solved_in_min"] is None
-        assert item["p4_solved_in_min"] is None
+        assert item["p1"]["solved_in_min"] == 5   # 300s
+        assert item["p2"]["solved_in_min"] == 15  # 900s
+        assert item["p3"]["solved_in_min"] is None
+        assert item["p4"]["solved_in_min"] is None
 
     def test_history_excludes_review_and_running(
         self,

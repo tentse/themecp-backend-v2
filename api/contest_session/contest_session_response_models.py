@@ -17,6 +17,8 @@ class ProblemDetail(BaseModel):
     contestId: str
     index: str
     rating: int
+    status: ProblemStatus = ProblemStatus.UNSOLVED
+    solved_in_min: int | None = None
 
 
 class ContestSessionBase(BaseModel):
@@ -59,14 +61,6 @@ class ContestSessionProblemsStatus(BaseModel):
     p2: ProblemDetail
     p3: ProblemDetail
     p4: ProblemDetail
-    p1_status: ProblemStatus
-    p2_status: ProblemStatus
-    p3_status: ProblemStatus
-    p4_status: ProblemStatus
-    p1_accepted_at: int | None = None
-    p2_accepted_at: int | None = None
-    p3_accepted_at: int | None = None
-    p4_accepted_at: int | None = None
 
 
 class CodeforcesProblems(BaseModel):
@@ -97,14 +91,6 @@ class ContestHistoryItem(BaseModel):
     p2: ProblemDetail
     p3: ProblemDetail
     p4: ProblemDetail
-    p1_status: ProblemStatus
-    p2_status: ProblemStatus
-    p3_status: ProblemStatus
-    p4_status: ProblemStatus
-    p1_solved_in_min: int | None = None
-    p2_solved_in_min: int | None = None
-    p3_solved_in_min: int | None = None
-    p4_solved_in_min: int | None = None
 
 
 class ContestHistoryOutput(BaseModel):

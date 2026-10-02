@@ -82,6 +82,12 @@ target/
 profile_default/
 ipython_config.py
 
+# Local load tests, benchmarks, and planning notes
+.loadtest-results
+/loadtest-results/
+/benchmark/
+/group-contest-design.md
+
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
 #   intended to run in multiple environments; otherwise, check them in:

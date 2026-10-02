@@ -1,5 +1,5 @@
 """
-Tests for the contest_session merge migration (f3a91c47b2d8).
+Tests for the contest_session merge and status enum migrations.
 
 Merging the two child tables into contest_session is the only irreversible step
 in the refactor, so the backfill is verified directly: insert rows in the old
@@ -16,6 +16,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import DataError
 
 MIGRATION_DB_NAME = "themecp_v2_migration_test"
 ADMIN_DB_URL = "postgresql://themecp_test:themecp_test@localhost:5433/themecp_v2_test"
@@ -23,6 +24,7 @@ MIGRATION_DB_URL = f"postgresql://themecp_test:themecp_test@localhost:5433/{MIGR
 
 BEFORE_MERGE = "1ff5fb2df58b"
 AFTER_MERGE = "f3a91c47b2d8"
+AFTER_STATUS_ENUMS = "fb965a5a48fc"
 
 SESSION_ID = "finished-session"
 REVIEW_SESSION_ID = "review-session"
@@ -295,3 +297,109 @@ class TestMergeMigration:
         assert result.solved_count == 2
         assert result.performance == 1650
         assert result.rating_after == 1417
+
+
+@pytest.fixture
+def rows_before_status_enums(migration_engine, alembic_config):
+    """Cover finished results, upsolves, and nullable REVIEW problem statuses."""
+    command.upgrade(alembic_config, BEFORE_MERGE)
+    _insert_old_shape_rows(migration_engine)
+    command.upgrade(alembic_config, AFTER_MERGE)
+
+    with migration_engine.begin() as connection:
+        connection.execute(text("""
+            UPDATE contest_session SET p3_status = 'UPSOLVED' WHERE id = :sid
+        """), {"sid": SESSION_ID})
+        return connection.execute(text(
+            "SELECT * FROM contest_session ORDER BY id"
+        )).mappings().all()
+
+
+class TestContestSessionStatusEnumMigration:
+    def test_upgrade_preserves_rows_and_uses_shared_enum_types(
+        self, migration_engine, alembic_config, rows_before_status_enums
+    ):
+        command.upgrade(alembic_config, AFTER_STATUS_ENUMS)
+
+        with migration_engine.connect() as connection:
+            rows = connection.execute(text(
+                "SELECT * FROM contest_session ORDER BY id"
+            )).mappings().all()
+            column_types = dict(connection.execute(text("""
+                SELECT column_name, udt_name FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'contest_session'
+                  AND column_name IN ('status', 'p1_status', 'p2_status', 'p3_status', 'p4_status')
+            """)).all())
+
+        assert rows == rows_before_status_enums
+        assert column_types == {
+            "status": "contest_status",
+            "p1_status": "problem_status",
+            "p2_status": "problem_status",
+            "p3_status": "problem_status",
+            "p4_status": "problem_status",
+        }
+
+    @pytest.mark.parametrize("column_name", [
+        "status", "p1_status", "p2_status", "p3_status", "p4_status"
+    ])
+    def test_database_rejects_invalid_strings_from_direct_sql(
+        self, migration_engine, alembic_config, rows_before_status_enums, column_name
+    ):
+        command.upgrade(alembic_config, AFTER_STATUS_ENUMS)
+
+        # Raw SQL bypasses Python enum validation: the database must reject it.
+        with pytest.raises(DataError, match="invalid input value for enum"):
+            with migration_engine.begin() as connection:
+                connection.execute(text(f"""
+                    UPDATE contest_session SET {column_name} = 'INVALID' WHERE id = :sid
+                """), {"sid": SESSION_ID})
+
+    @pytest.mark.parametrize("column_name", [
+        "status", "p1_status", "p2_status", "p3_status", "p4_status"
+    ])
+    def test_invalid_existing_values_block_upgrade_without_rewriting_rows(
+        self, migration_engine, alembic_config, rows_before_status_enums, column_name
+    ):
+        with migration_engine.begin() as connection:
+            connection.execute(text(f"""
+                UPDATE contest_session SET {column_name} = 'INVALID' WHERE id = :sid
+            """), {"sid": SESSION_ID})
+
+        with pytest.raises(DataError, match="invalid input value for enum"):
+            command.upgrade(alembic_config, AFTER_STATUS_ENUMS)
+
+        with migration_engine.connect() as connection:
+            value = connection.execute(text(f"""
+                SELECT {column_name} FROM contest_session WHERE id = :sid
+            """), {"sid": SESSION_ID}).scalar_one()
+            revision = connection.execute(text(
+                "SELECT version_num FROM alembic_version"
+            )).scalar_one()
+
+        assert value == "INVALID"
+        assert revision == AFTER_MERGE
+
+    def test_downgrade_preserves_rows_and_removes_enum_types(
+        self, migration_engine, alembic_config, rows_before_status_enums
+    ):
+        command.upgrade(alembic_config, AFTER_STATUS_ENUMS)
+        command.downgrade(alembic_config, AFTER_MERGE)
+
+        with migration_engine.connect() as connection:
+            rows = connection.execute(text(
+                "SELECT * FROM contest_session ORDER BY id"
+            )).mappings().all()
+            column_types = connection.execute(text("""
+                SELECT data_type, character_maximum_length FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'contest_session'
+                  AND column_name IN ('status', 'p1_status', 'p2_status', 'p3_status', 'p4_status')
+            """)).all()
+            enum_types = connection.execute(text("""
+                SELECT typname FROM pg_type
+                WHERE typname IN ('contest_status', 'problem_status')
+            """)).scalars().all()
+
+        assert rows == rows_before_status_enums
+        assert column_types == [("character varying", 255)] * 5
+        assert enum_types == []

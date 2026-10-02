@@ -5,14 +5,34 @@ from sqlalchemy import (
     String,
     Integer,
     BigInteger,
+    Enum as SAEnum,
     ForeignKey,
     Index,
     PrimaryKeyConstraint
 )
 from api.db.pg_database import Base
-from .contest_session_response_models import ProblemStatus
+from .contest_session_response_models import ContestStatus, ProblemStatus
 
 CONTEST_SESSION_ID = "contest_session.id"
+
+# The four problem columns share one PostgreSQL type. Keep both types in the
+# metadata so schema creation and Alembic see the same enum definitions.
+CONTEST_STATUS_ENUM = SAEnum(
+    ContestStatus,
+    name="contest_status",
+    metadata=Base.metadata,
+    values_callable=lambda enum: [member.value for member in enum],
+    native_enum=True,
+    validate_strings=True,
+)
+PROBLEM_STATUS_ENUM = SAEnum(
+    ProblemStatus,
+    name="problem_status",
+    metadata=Base.metadata,
+    values_callable=lambda enum: [member.value for member in enum],
+    native_enum=True,
+    validate_strings=True,
+)
 
 
 @dataclass
@@ -49,35 +69,35 @@ class ContestSession(Base):
     level = Column(Integer, nullable=False)
     theme = Column(String(255), nullable=False)
     duration_in_min = Column(Integer, nullable=False)
-    status = Column(String(255), nullable=False)
+    status = Column(CONTEST_STATUS_ENUM, nullable=False)
     starts_at = Column(BigInteger, nullable=True)
     ends_at = Column(BigInteger, nullable=True)
 
     p1_cf_contestId = Column("p1_cf_contestID", String(255), nullable=False)
     p1_cf_index = Column(String(255), nullable=False)
     p1_rating = Column(Integer, nullable=True)
-    p1_status = Column(String(255), nullable=True)
+    p1_status = Column(PROBLEM_STATUS_ENUM, nullable=True)
     p1_accepted_at = Column(BigInteger, nullable=True)
     p1_solved_in_min = Column(Integer, nullable=True)
 
     p2_cf_contestId = Column("p2_cf_contestID", String(255), nullable=False)
     p2_cf_index = Column(String(255), nullable=False)
     p2_rating = Column(Integer, nullable=True)
-    p2_status = Column(String(255), nullable=True)
+    p2_status = Column(PROBLEM_STATUS_ENUM, nullable=True)
     p2_accepted_at = Column(BigInteger, nullable=True)
     p2_solved_in_min = Column(Integer, nullable=True)
 
     p3_cf_contestId = Column("p3_cf_contestID", String(255), nullable=False)
     p3_cf_index = Column(String(255), nullable=False)
     p3_rating = Column(Integer, nullable=True)
-    p3_status = Column(String(255), nullable=True)
+    p3_status = Column(PROBLEM_STATUS_ENUM, nullable=True)
     p3_accepted_at = Column(BigInteger, nullable=True)
     p3_solved_in_min = Column(Integer, nullable=True)
 
     p4_cf_contestId = Column("p4_cf_contestID", String(255), nullable=False)
     p4_cf_index = Column(String(255), nullable=False)
     p4_rating = Column(Integer, nullable=True)
-    p4_status = Column(String(255), nullable=True)
+    p4_status = Column(PROBLEM_STATUS_ENUM, nullable=True)
     p4_accepted_at = Column(BigInteger, nullable=True)
     p4_solved_in_min = Column(Integer, nullable=True)
 

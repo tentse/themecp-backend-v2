@@ -693,7 +693,8 @@ class ContestSessionService:
         )
         accepted_submissions = ContestSessionService._build_lookup_of_accepted_submissions(
             user_submissions=user_submissions,
-            starts_at=starts_at
+            starts_at=starts_at,
+            ends_at=contest_session.ends_at
         )
         ContestSessionService._check_problems_solve_sequentially_and_update_problem_statuses(
             db=db,
@@ -748,14 +749,18 @@ class ContestSessionService:
     @staticmethod
     def _build_lookup_of_accepted_submissions(
         user_submissions: list[CodeforcesResponseModel.UserSubmittedProblem],
-        starts_at: int
+        starts_at: int,
+        ends_at: int
     ) -> dict[tuple[str, str], int]:
         """
-        Build a lookup of accepted submissions: (contestID, index) -> latest creationTimeSeconds
+        Map each problem to its latest accepted submission within the contest.
+
+        Submission creation time must be in [starts_at, ends_at). Refreshing or
+        finalizing after the deadline can still count an in-time submission.
         """
         accepted_submissions: dict[tuple[str, str], int] = {}
         for submission in user_submissions:
-            if submission.verdict == "OK" and submission.creationTimeSeconds >= starts_at:
+            if submission.verdict == "OK" and starts_at <= submission.creationTimeSeconds < ends_at:
                 key = (submission.contestID, submission.index)
                 if key not in accepted_submissions or submission.creationTimeSeconds > accepted_submissions[key]:
                     accepted_submissions[key] = submission.creationTimeSeconds
